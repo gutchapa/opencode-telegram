@@ -128,6 +128,15 @@ npm install
 npm run build
 ```
 
+## Feedback & Support
+
+Found a bug, have a feature request, or want to say hi? Feedback lives on GitHub:
+
+- **Issues:** https://github.com/gutchapa/opencode-telegram/issues
+- **Discussions:** https://github.com/gutchapa/opencode-telegram/discussions
+
+Check `npm run status` in a checkout of the repo for download and traffic stats.
+
 ## License
 
 MIT
