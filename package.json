@@ -31,7 +31,8 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "lint": "eslint src/**/*.ts",
-    "test": "jest"
+    "test": "jest",
+    "status": "bash scripts/status.sh"
   },
   "keywords": [
     "opencode",
