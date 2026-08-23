@@ -1,8 +1,8 @@
 // Slash commands for the opencode telegram bot, mirroring a classic chat-command
-// surface (/reset /restart /compact /model /tools etc.). Gateway-only commands
-// (acp, gateway, login, dock-*, bot-upgrade, ...) are registered so they resolve
-// instead of falling through to the AI handler, and reply with a short
-// explanation.
+// surface (/reset /restart /compact /model /tools etc.). Commands that only
+// make sense in the opencode CLI (login, dock-*, bot-upgrade, ...) are
+// registered so they resolve instead of falling through to the AI handler,
+// and reply with a short explanation.
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -185,17 +185,11 @@ function buildHelp(): string {
     'Bot ops:',
     '/bot-ping · /bot-version · /bot-logs · /bot-help',
     '/send <text> · /start',
-    '',
-    'Gateway-only stubs:',
-    '/acp · /agents · /agentstatus · /gateway · /botinfo · /login · /crestodian',
-    '/install · /channels · /platforms · /queue · /session · /loop · /learn',
-    '/dock-telegram · /dock-discord · /dock-mattermost · /dock-slack · /bot-upgrade',
-    '/tts · /voice · /talkvoice',
   ].join('\n');
 }
 
 function stub(name: string): string {
-  return `${name} is a gateway/CLI-only command and is not applicable in this opencode bot.`;
+  return `${name} is a CLI-only opencode command and is not applicable in this Telegram bot.`;
 }
 
 export function setupSlashCommands(): void {
@@ -458,14 +452,13 @@ export function setupSlashCommands(): void {
     'This plugin runs from a local checkout; upgrade via git pull + npm run build + launchctl kickstart.',
   );
   oc('send', async (_u, args) => `Sent to current chat: ${args.trim() || '(empty)'}`);
-  oc('dock-telegram', async () => 'Already running as the Telegram bot (telegram ingress active).');
+  oc('dock-telegram', async () => 'Already running as the Telegram bot.');
 
-  // --- gateway-only stubs ---
+  // --- CLI-only stubs (hidden from the Telegram menu) ---
   for (const name of [
     'acp',
     'agents',
     'agentstatus',
-    'gateway',
     'botinfo',
     'login',
     'crestodian',
