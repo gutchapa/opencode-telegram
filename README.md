@@ -7,7 +7,7 @@
 
 A Telegram bot for [opencode](https://opencode.ai). Chat with your local AI
 assistant from Telegram — run commands, read/search/list files, and control the
-agent with 90+ slash commands (`/reset`, `/status`, `/model`,
+agent with 70+ slash commands (`/reset`, `/status`, `/model`,
 `/goal`, `/skills`, `/tell`, ...).
 
 Two ways to run it:
