@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.local.opencode-telegram-bot</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>/path/to/opencode-telegram-plugin/dist/index.js</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/path/to/opencode-telegram-plugin</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TELEGRAM_BOT_TOKEN</key>
+        <string>123456:ABC...</string>
+        <key>ALLOWED_TELEGRAM_USERS</key>
+        <string>123456789</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>/tmp/opencode-telegram-bot.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/opencode-telegram-bot.err.log</string>
+</dict>
+</plist>
