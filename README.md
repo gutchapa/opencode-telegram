@@ -1,5 +1,10 @@
 # gutchapa-opencode-telegram
 
+[![npm version](https://img.shields.io/npm/v/gutchapa-opencode-telegram)](https://www.npmjs.com/package/gutchapa-opencode-telegram)
+[![npm downloads](https://img.shields.io/npm/dm/gutchapa-opencode-telegram)](https://www.npmjs.com/package/gutchapa-opencode-telegram)
+[![license](https://img.shields.io/npm/l/gutchapa-opencode-telegram)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/gutchapa/opencode-telegram)](https://github.com/gutchapa/opencode-telegram)
+
 A Telegram bot for [opencode](https://opencode.ai). Chat with your local AI
 assistant from Telegram — run commands, read/search/list files, and control the
 agent with 90+ slash commands (`/reset`, `/status`, `/model`,
