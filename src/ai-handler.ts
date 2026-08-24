@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import { setAiHandler, getRegisteredCommands } from './sdk/plugin-runtime';
 import { getAgentState } from './agent-state';
 import { appendMessage, getHistory, formatTranscript, HistoryEntry } from './conversation-memory';
+import { runShell } from './shell';
 
 const OPENCODE_BIN = process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode';
 const OPENCODE_CWD = process.env.OPENCODE_CWD || '/Users/gutchapa/.opencode-bot-ws';
@@ -17,6 +18,60 @@ const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '791865934')
   .filter(Boolean);
 
 let agenticQueue: Promise<string | null> = Promise.resolve(null);
+
+const SHELL_COMMANDS = new Set([
+  'ls','pwd','cd','cat','echo','printf','whoami','id','groups','uname','sw_vers','hostname','date','cal',
+  'df','du','ps','top','kill','sleep','uptime','env','export','which','type','command','file','stat','readlink',
+  'head','tail','wc','sort','uniq','cut','tr','grep','egrep','fgrep','sed','awk','find','locate','mdfind','xargs',
+  'mkdir','rmdir','rm','cp','mv','touch','chmod','chown','chgrp','ln','readlink','open','defaults','plutil',
+  'tar','gzip','gunzip','zip','unzip','base64','shasum','md5','cksum','dd',
+  'curl','wget','ping','traceroute','dig','nslookup','nc','netstat','lsof','ifconfig','scutil','route','arp',
+  'brew','npm','npx','node','python3','python','pip3','pip','git','svn','hg','make','cmake','xcodebuild','swift',
+  'docker','kubectl','sqlite3','osascript','say','afplay','sips','ffmpeg','jq','yq','sh','bash','zsh','sudo',
+  'system_profiler','diskutil','ioreg','systemsetup','networksetup','security','dscl','launchctl','launchd',
+  'killall','pkill','wait','tee','fold','paste','join','comm','nl','od','xxd','hexdump','strings','diff','cmp',
+  'patch','rsync','scp','ssh','sftp','ftp','telnet','ruby','perl','php','go','rustc','cargo',
+  'watch','duf','broot','eza','exa','bat','fd','rg','ag','ack','delta','zoxide','fzf',
+]);
+
+const QUESTION_RE = /^(how|what|why|when|which|who|whom|whose|where|is|are|was|were|can|could|should|would|will|does|did)\b/i;
+const SHELL_STRONG_RE = /\b(try|run|execute|exec|show|print)\b/i;
+const SHELL_WEAK_RE = /\b(use|please|now|just|do|go ahead|let'?s)\b/i;
+const SHELL_FILLER = /^(me|the|a|an|us|out)$/i;
+
+function extractShellCommand(message: string): string | null {
+  const text = message.trim();
+  if (!text || text.length > 500) return null;
+  const tokens = text.split(/\s+/);
+  const clean = (t: string) => t.replace(/^[^a-zA-Z0-9_./~-]+/, '').toLowerCase();
+  let idx = -1;
+  if (SHELL_COMMANDS.has(clean(tokens[0]))) {
+    idx = 0;
+  } else {
+    const isQuestion = QUESTION_RE.test(text);
+    for (let i = 0; i < tokens.length; i++) {
+      const strong = SHELL_STRONG_RE.test(tokens[i]);
+      const weak = SHELL_WEAK_RE.test(tokens[i]);
+      if (!(strong || (weak && !isQuestion))) continue;
+      let j = i + 1;
+      if (j < tokens.length && SHELL_FILLER.test(clean(tokens[j]))) j++;
+      if (j < tokens.length && SHELL_COMMANDS.has(clean(tokens[j]))) {
+        idx = j;
+        break;
+      }
+      if (strong) break;
+    }
+  }
+  if (idx === -1) return null;
+  let cmd = tokens.slice(idx).join(' ');
+  const cutAt = cmd.search(
+    /\s+(command|output|result|results|here|please|now|thanks|for me|to telegram|in telegram|to terminal|on terminal|and then|then|and show|show me|and print)\b/i
+  );
+  if (cutAt !== -1) cmd = cmd.slice(0, cutAt);
+  cmd = cmd.replace(/[,.…\s]+$/g, '').trim();
+  if (!cmd || cmd.length > 200) return null;
+  return cmd;
+}
 
 // In-process opencode SDK client, injected when this package runs as an opencode
 // server plugin. When set, agentic replies run against the hosting server instead
@@ -47,8 +102,12 @@ function buildSystemPrompt(): string {
   const abs = Math.abs(offsetMinutes);
   const tz = `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
   return (
-    'You are opencode, a local AI assistant running on the user\'s Mac via llama.cpp (Qwen). ' +
-    'Answer helpfully and concisely. You have no internet access. ' +
+    'You are opencode, the Telegram assistant for the user\'s Mac, running locally via llama.cpp (Qwen) and wired into the opencode CLI. ' +
+    'The bot HAS real abilities: it executes shell commands (via /execute, /bash, /exec and its agentic opencode path), reads/searches/lists files, and acts as a coding agent. ' +
+    'Never claim you cannot execute shell commands, read files, or use tools - the bot can. ' +
+    'If you cannot run a tool yourself in this response, still do not say the bot is incapable: tell the user to use the relevant slash command (e.g. /execute <command>) or that the command is being run. ' +
+    `The bot exposes ${getRegisteredCommands().size} slash commands; list them with /help. ` +
+    'Answer helpfully and concisely. ' +
     `The current local date and time is: ${dateTime} (UTC${tz}).`
   );
 }
@@ -263,6 +322,21 @@ export async function handleAiMessage(user: string, message: string): Promise<st
   const transcript = formatTranscript(history);
 
   if (ALLOWED_USERS.includes(user)) {
+    const shellCmd = extractShellCommand(message);
+    if (shellCmd) {
+      try {
+        const output = await runShell(shellCmd);
+        const result = `$ ${shellCmd}\n${output}`;
+        appendMessage(user, 'assistant', result);
+        console.log(`AI Response (shell): ${result}`);
+        return truncate(result);
+      } catch (error: any) {
+        console.error('Shell command failed:', error.message);
+        const msg = `Shell command failed: ${error.message}`;
+        appendMessage(user, 'assistant', msg);
+        return msg;
+      }
+    }
     const state = getAgentState();
     const prelude = [
       state.goal ? `Ongoing goal: ${state.goal}` : '',

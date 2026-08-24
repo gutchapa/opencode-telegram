@@ -4,15 +4,13 @@
 // registered so they resolve instead of falling through to the AI handler,
 // and reply with a short explanation.
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { readFile, readdir, writeFile } from 'fs/promises';
 import { registerPluginCommand, getRegisteredCommands } from './sdk/plugin-runtime';
 import { getAgentState, setAgentState } from './agent-state';
 import { clearHistory } from './conversation-memory';
 import { handleAiMessage } from './ai-handler';
+import { runShell, truncate } from './shell';
 
-const execFileAsync = promisify(execFile);
 const CWD = process.env.OPENCODE_CWD || '/Users/gutchapa';
 const HOME = process.env.HOME || '/Users/gutchapa';
 const ALLOWED = (process.env.ALLOWED_TELEGRAM_USERS || '791865934')
@@ -25,10 +23,6 @@ const OPENCODE_CONFIGS = [
   `${HOME}/.opencode/opencode.json`,
 ];
 
-function truncate(text: string, max = 4000): string {
-  return text.length > max ? text.slice(0, max) + '\n\n…(truncated)' : text;
-}
-
 function isAllowed(user: string): boolean {
   return ALLOWED.includes(user);
 }
@@ -38,16 +32,6 @@ function parseBoolArg(arg: string, current: boolean): boolean {
   if (a === 'on' || a === 'true' || a === '1' || a === 'yes') return true;
   if (a === 'off' || a === 'false' || a === '0' || a === 'no') return false;
   return current;
-}
-
-async function runShell(cmd: string): Promise<string> {
-  if (!cmd.trim()) return 'Usage: /exec <command>';
-  const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', cmd], {
-    cwd: CWD,
-    timeout: 60000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
-  return truncate((stdout + (stderr ? `\n${stderr}` : '')).trim() || '(no output)');
 }
 
 async function readOpenCodeConfig(): Promise<{ model: string; paths: string[]; raw: string }> {
