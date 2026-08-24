@@ -9,6 +9,7 @@ import { promisify } from 'util';
 import { readFile, readdir, writeFile } from 'fs/promises';
 import { registerPluginCommand, getRegisteredCommands } from './sdk/plugin-runtime';
 import { getAgentState, setAgentState } from './agent-state';
+import { clearHistory } from './conversation-memory';
 import { handleAiMessage } from './ai-handler';
 
 const execFileAsync = promisify(execFile);
@@ -207,13 +208,15 @@ export function setupSlashCommands(): void {
 
   // --- session ---
   oc('commands', async (_u) => buildHelp());
-  oc('new', async () => {
+  oc('new', async (user) => {
     setAgentState({ goal: '', steer: '' });
-    return 'New session started. Goal and steering cleared.';
+    clearHistory(user);
+    return 'New session started. Goal, steering and conversation history cleared.';
   });
-  oc('reset', async () => {
+  oc('reset', async (user) => {
     setAgentState({ goal: '', steer: '' });
-    return 'Session reset. Goal and steering cleared.';
+    clearHistory(user);
+    return 'Session reset. Goal, steering and conversation history cleared.';
   });
   oc('compact', async () =>
     'No persistent context to compact: each reply starts a fresh opencode session.',
@@ -223,7 +226,7 @@ export function setupSlashCommands(): void {
   );
   oc('stop', async () => 'Stopped. Pending agentic runs dropped.');
   oc('status', async () => stateSummary());
-  oc('id', async (user) => `Telegram user id: ${user}\nSession: main (fresh opencode session per message)`);
+  oc('id', async (user) => `Telegram user id: ${user}\nSession: per-user conversation memory (cleared by /new)`);
   oc('whoami', async (user) => {
     const s = getAgentState();
     return `You are Telegram user ${user}. I am ${s.name}, the opencode telegram bot.`;

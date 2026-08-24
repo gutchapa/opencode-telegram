@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { setAiHandler, getRegisteredCommands } from './sdk/plugin-runtime';
 import { getAgentState } from './agent-state';
+import { appendMessage, getHistory, formatTranscript, HistoryEntry } from './conversation-memory';
 
 const OPENCODE_BIN = process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode';
 const OPENCODE_CWD = process.env.OPENCODE_CWD || '/Users/gutchapa/.opencode-bot-ws';
@@ -22,6 +23,8 @@ let agenticQueue: Promise<string | null> = Promise.resolve(null);
 // of spawning a nested `opencode run` process.
 let opencodeClient: any = null;
 let opencodeDirectory: string | undefined;
+// Reuse one opencode session per chat so the SDK path keeps real multi-turn context.
+const opencodeSessionIds = new Map<string, string>();
 
 export function setOpencodeClient(client: unknown, directory?: string): void {
   opencodeClient = client;
@@ -96,7 +99,7 @@ interface ChatCompletionResponse {
   choices?: ChatCompletionChoice[];
 }
 
-async function callQwenDirect(message: string): Promise<string> {
+async function callQwenDirect(message: string, history: HistoryEntry[] = []): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
   try {
@@ -107,7 +110,9 @@ async function callQwenDirect(message: string): Promise<string> {
         model: getAgentState().model || LLM_MODEL,
         messages: [
           { role: 'system', content: buildSystemPrompt() },
-          { role: 'user', content: message },
+          ...(history.length
+            ? history.map((e) => ({ role: e.role, content: e.content }))
+            : [{ role: 'user' as const, content: message }]),
         ],
         max_tokens: 512,
         temperature: 0.7,
@@ -134,18 +139,23 @@ async function callQwenDirect(message: string): Promise<string> {
   }
 }
 
-async function runAgenticViaClient(message: string): Promise<string> {
+async function runAgenticViaClient(message: string, user: string): Promise<string> {
   const directory = opencodeDirectory || OPENCODE_CWD;
-  const session = await opencodeClient.session.create({
-    body: { title: `telegram:${new Date().toISOString()}` },
-    query: { directory },
-  });
-  // The SDK client returns { data, error, request, response } envelopes, so the
-  // session id may be at session.data.id; accept both shapes for robustness.
-  const sessionId = session?.data?.id ?? session?.id;
+  let sessionId = opencodeSessionIds.get(user);
   if (!sessionId) {
-    throw new Error('opencode client session create returned no session id');
+    const session = await opencodeClient.session.create({
+      body: { title: `telegram:${new Date().toISOString()}` },
+      query: { directory },
+    });
+    // The SDK client returns { data, error, request, response } envelopes, so the
+    // session id may be at session.data.id; accept both shapes for robustness.
+    sessionId = session?.data?.id ?? session?.id;
+    if (!sessionId) {
+      throw new Error('opencode client session create returned no session id');
+    }
+    opencodeSessionIds.set(user, sessionId);
   }
+  try {
   const response = await Promise.race([
     opencodeClient.session.prompt({
       path: { id: sessionId },
@@ -170,14 +180,20 @@ async function runAgenticViaClient(message: string): Promise<string> {
     throw new Error('opencode client prompt produced no text');
   }
   return cleanFences(text);
+  } catch (error) {
+    // Session may be dead (e.g. timed out); drop it so the next call starts fresh.
+    opencodeSessionIds.delete(user);
+    throw error;
+  }
 }
 
-async function runOpencodeAgentic(message: string): Promise<string> {
+async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessage: string): Promise<string> {
   if (opencodeClient) {
-    return await runAgenticViaClient(message);
+    // The SDK session keeps its own history; send only the latest user message.
+    return await runAgenticViaClient(latestMessage, user);
   }
 
-  const child = spawn(OPENCODE_BIN, ['run', message, '--log-level', 'ERROR', '--auto'], {
+  const child = spawn(OPENCODE_BIN, ['run', fullPrompt, '--log-level', 'ERROR', '--auto'], {
     cwd: OPENCODE_CWD,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, NO_COLOR: '1' },
@@ -239,6 +255,11 @@ export async function handleAiMessage(user: string, message: string): Promise<st
     return null;
   }
 
+  // Remember this turn so follow-up messages have context.
+  appendMessage(user, 'user', message);
+  const history = getHistory(user);
+  const transcript = formatTranscript(history);
+
   if (ALLOWED_USERS.includes(user)) {
     const state = getAgentState();
     const prelude = [
@@ -250,11 +271,17 @@ export async function handleAiMessage(user: string, message: string): Promise<st
     ]
       .filter(Boolean)
       .join('\n');
-    const agentPrompt = prelude ? `${prelude}\n\n${message}` : message;
-    const queued = agenticQueue.then(() => runOpencodeAgentic(agentPrompt));
+    // opencode run is stateless per invocation, so inject the recent
+    // transcript and ask it to continue the conversation.
+    const transcriptPrompt = transcript
+      ? `${transcript}\n\nContinue the conversation. Respond to the user's latest message.`
+      : message;
+    const agentPrompt = [prelude, transcriptPrompt].filter(Boolean).join('\n\n');
+    const queued = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message));
     agenticQueue = queued.then(() => null, () => null);
     try {
       const agentic = await queued;
+      appendMessage(user, 'assistant', agentic);
       console.log(`AI Response (opencode): ${agentic}`);
       return truncate(agentic);
     } catch (error: any) {
@@ -265,7 +292,8 @@ export async function handleAiMessage(user: string, message: string): Promise<st
   }
 
   try {
-    const response = await callQwenDirect(message);
+    const response = await callQwenDirect(message, history);
+    appendMessage(user, 'assistant', response);
     console.log(`AI Response (qwen): ${response}`);
     return truncate(response);
   } catch (error: any) {
