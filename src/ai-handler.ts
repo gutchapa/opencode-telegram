@@ -187,10 +187,12 @@ async function runAgenticViaClient(message: string, user: string): Promise<strin
   }
 }
 
-async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessage: string): Promise<string> {
+async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessage: string, prelude = ''): Promise<string> {
   if (opencodeClient) {
-    // The SDK session keeps its own history; send only the latest user message.
-    return await runAgenticViaClient(latestMessage, user);
+    // The SDK session keeps its own history, so send the latest message plus
+    // the current goal/steer/focus prelude (no transcript duplication).
+    const turnPrompt = [prelude, latestMessage].filter(Boolean).join('\n\n');
+    return await runAgenticViaClient(turnPrompt, user);
   }
 
   const child = spawn(OPENCODE_BIN, ['run', fullPrompt, '--log-level', 'ERROR', '--auto'], {
@@ -277,7 +279,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
       ? `${transcript}\n\nContinue the conversation. Respond to the user's latest message.`
       : message;
     const agentPrompt = [prelude, transcriptPrompt].filter(Boolean).join('\n\n');
-    const queued = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message));
+    const queued = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message, prelude));
     agenticQueue = queued.then(() => null, () => null);
     try {
       const agentic = await queued;
