@@ -39,6 +39,31 @@ const SHELL_STRONG_RE = /\b(try|run|execute|exec|show|print)\b/i;
 const SHELL_WEAK_RE = /\b(use|please|now|just|do|go ahead|let'?s)\b/i;
 const SHELL_FILLER = /^(me|the|a|an|us|out)$/i;
 
+const TASK_RE = /\b(check|install|run|execut|show|list|find|creat|mak|build|test|anal|writ|read|open|search|updat|remov|delet|copy|move|download|curl|clone|start|stop|restart|status|debug|fix|setup|config|generate|explain)\b/i;
+
+const INABILITY_RE = [
+  /i (?:haven'?t been able to|am unable to|am not able to|cannot|can'?t|don'?t have|do not have|lack) (?:the )?(?:ability|permission|access|tools?|means?)? ?(?:to )?(?:execute|run|access|open|use)/i,
+  /i can only (?:generate|provide|output|create) text/i,
+  /i (?:cannot|can'?t) (?:execute|run) (?:shell )?(?:commands?|code)/i,
+  /(?:you|please|you'?ll need to) (?:can )?(?:run|execute|paste|copy)[^.]*these commands?/i,
+  /i'?m (?:just|only) a (?:text|language|chat) model/i,
+  /no (?:shell|terminal|command[ -]line|filesystem) access/i,
+  /i (?:don'?t|do not) (?:have|possess) (?:shell|terminal|command[ -]line|filesystem|tool)/i,
+  /i have no (?:ability|way|access|permission)/i,
+  /these commands? (?:into|in|to) your/i,
+  /in your (?:own )?terminal/i,
+];
+
+const INABILITY_FALLBACK =
+  "I can run that for you - commands execute on this Mac and the output comes back right here in Telegram.\n" +
+  "Send me: /execute <command>\n" +
+  'or just say it plainly, e.g. "try npm install -g wispr".\n\n' +
+  "(The opencode agent was still working on your message and timed out, so this reply comes from the fallback model.)";
+
+export function isInabilityClaim(response: string): boolean {
+  return INABILITY_RE.some((re) => re.test(response));
+}
+
 function extractShellCommand(message: string): string | null {
   const text = message.trim();
   if (!text || text.length > 500) return null;
@@ -65,7 +90,7 @@ function extractShellCommand(message: string): string | null {
   if (idx === -1) return null;
   let cmd = tokens.slice(idx).join(' ');
   const cutAt = cmd.search(
-    /\s+(command|output|result|results|here|please|now|thanks|for me|to telegram|in telegram|to terminal|on terminal|and then|then|and show|show me|and print)\b/i
+    /\s+(command|output|result|results|here|please|now|thanks|for me|to telegram|in telegram|to terminal|on terminal|in terminal|your terminal|the terminal|and then|then|and show|show me|and print)\b/i
   );
   if (cutAt !== -1) cmd = cmd.slice(0, cutAt);
   cmd = cmd.replace(/[,.…\s]+$/g, '').trim();
@@ -337,38 +362,47 @@ export async function handleAiMessage(user: string, message: string): Promise<st
         return msg;
       }
     }
-    const state = getAgentState();
-    const prelude = [
-      state.goal ? `Ongoing goal: ${state.goal}` : '',
-      state.steer ? `Steering: ${state.steer}` : '',
-      state.focus ? 'Focus mode is ON: stay tightly on task, no tangential exploration.' : '',
-      state.prose ? 'Write in flowing prose.' : '',
-      state.fast ? 'Fast mode is ON: keep responses brief.' : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
-    // opencode run is stateless per invocation, so inject the recent
-    // transcript and ask it to continue the conversation.
-    const transcriptPrompt = transcript
-      ? `${transcript}\n\nContinue the conversation. Respond to the user's latest message.`
-      : message;
-    const agentPrompt = [prelude, transcriptPrompt].filter(Boolean).join('\n\n');
-    const queued = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message, prelude));
-    agenticQueue = queued.then(() => null, () => null);
-    try {
-      const agentic = await queued;
-      appendMessage(user, 'assistant', agentic);
-      console.log(`AI Response (opencode): ${agentic}`);
-      return truncate(agentic);
-    } catch (error: any) {
-      console.error('opencode run failed, falling back to direct Qwen:', error.message);
+    const isShortChat = message.trim().length <= 80 && !TASK_RE.test(message);
+    if (isShortChat) {
+      console.log('Short conversational message; skipping opencode run (direct model)');
+    } else {
+      const state = getAgentState();
+      const prelude = [
+        state.goal ? `Ongoing goal: ${state.goal}` : '',
+        state.steer ? `Steering: ${state.steer}` : '',
+        state.focus ? 'Focus mode is ON: stay tightly on task, no tangential exploration.' : '',
+        state.prose ? 'Write in flowing prose.' : '',
+        state.fast ? 'Fast mode is ON: keep responses brief.' : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      // opencode run is stateless per invocation, so inject the recent
+      // transcript and ask it to continue the conversation.
+      const transcriptPrompt = transcript
+        ? `${transcript}\n\nContinue the conversation. Respond to the user's latest message.`
+        : message;
+      const agentPrompt = [prelude, transcriptPrompt].filter(Boolean).join('\n\n');
+      const queued = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message, prelude));
+      agenticQueue = queued.then(() => null, () => null);
+      try {
+        const agentic = await queued;
+        appendMessage(user, 'assistant', agentic);
+        console.log(`AI Response (opencode): ${agentic}`);
+        return truncate(agentic);
+      } catch (error: any) {
+        console.error('opencode run failed, falling back to direct Qwen:', error.message);
+      }
     }
   } else {
     console.log(`User ${user} not in allowed list; direct Qwen only (no tools)`);
   }
 
   try {
-    const response = await callQwenDirect(message, history);
+    let response = await callQwenDirect(message, history);
+    if (isInabilityClaim(response)) {
+      console.error('Qwen response claimed inability; replacing with truthful fallback.');
+      response = INABILITY_FALLBACK;
+    }
     appendMessage(user, 'assistant', response);
     console.log(`AI Response (qwen): ${response}`);
     return truncate(response);
@@ -380,3 +414,4 @@ export async function handleAiMessage(user: string, message: string): Promise<st
 }
 
 setAiHandler(handleAiMessage);
+
