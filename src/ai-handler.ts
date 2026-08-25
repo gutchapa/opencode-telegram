@@ -38,6 +38,11 @@ const QUESTION_RE = /^(how|what|why|when|which|who|whom|whose|where|is|are|was|w
 const SHELL_STRONG_RE = /\b(try|run|execute|exec|show|print)\b/i;
 const SHELL_WEAK_RE = /\b(use|please|now|just|do|go ahead|let'?s)\b/i;
 const SHELL_FILLER = /^(me|the|a|an|us|out)$/i;
+const INSPECT_ABOUT_RE = /(?:^|\b)(?:wht|what|how)\s+about\s+([a-z0-9][a-z0-9._-]*)/i;
+const INSPECT_STATE_RE = /(?:^|\b)(?:check|see|verify|is|are)\s+(?:if\s+)?([a-z0-9][a-z0-9._-]*)\s+(?:is\s+|are\s+)?(?:installed|running|available|present)\b/i;
+const INSPECT_VERSION_RE = /(?:^|\b)(?:what|which)\s+version\s+of\s+([a-z0-9][a-z0-9._-]*)/i;
+const INSPECT_STOPWORDS = new Set(['the','this','that','these','those','it','its','my','your','our','their','his','her','a','an','me','us','them','you','we','i','he','she','there','here','now','all','any','some','do']);
+
 
 const TASK_RE = /\b(check|install|run|execut|show|list|find|creat|mak|build|test|anal|writ|read|open|search|updat|remov|delet|copy|move|download|curl|clone|start|stop|restart|status|debug|fix|setup|config|generate|explain)\b/i;
 
@@ -60,6 +65,12 @@ const INABILITY_FALLBACK =
   'or just say it plainly, e.g. "try npm install -g wispr".\n\n' +
   "(The opencode agent was still working on your message and timed out, so this reply comes from the fallback model.)";
 
+const FAKE_ACTION_RE = /\b(?:i'?ll|i will|let me|i'?m going to|i'?m about to|ok,? i'?ll|now i'?ll)\s+(install|run|execute|check|verify|fix|set up|download|build|create|write|open|start|stop|deploy|update|remove|delete|test|try|restart|clone|configure|generate)\b/i;
+
+const TASK_FALLBACK =
+  "The opencode agent was working on that task but timed out, so this reply comes from the fallback model - which can't run commands itself.\n" +
+  'To run it directly: send /execute <command> (e.g. /execute npm install -g wispr), or just say it plainly: "try npm install -g wispr".';
+
 export function isInabilityClaim(response: string): boolean {
   return INABILITY_RE.some((re) => re.test(response));
 }
@@ -72,11 +83,35 @@ function looksLikeUnknownBinary(tokens: string[]): boolean {
   return false;
 }
 
+function buildInspectCommand(subject: string): string | null {
+  let s = subject.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  s = s.replace(/\.(js|ts|py|rb|go|rs|exe|sh|app|dmg|json|lock)$/i, '');
+  if (!s || s.length > 40 || !/^[a-z0-9._-]+$/.test(s)) return null;
+  if (INSPECT_STOPWORDS.has(s)) return null;
+  if (['cd','pwd','echo','exit','source','export','alias','true','false','test','help'].includes(s)) return null;
+  return `${s} --version`;
+}
+
 function extractShellCommand(message: string): string | null {
   const text = message.trim();
   if (!text || text.length > 500) return null;
   const tokens = text.split(/\s+/);
   const clean = (t: string) => t.replace(/^[^a-zA-Z0-9_./~-]+/, '').toLowerCase();
+  const aboutM = text.match(INSPECT_ABOUT_RE);
+  if (aboutM) {
+    const cmd = buildInspectCommand(aboutM[1]);
+    if (cmd) return cmd;
+  }
+  const stateM = text.match(INSPECT_STATE_RE);
+  if (stateM) {
+    const cmd = buildInspectCommand(stateM[1]);
+    if (cmd) return cmd;
+  }
+  const verM = text.match(INSPECT_VERSION_RE);
+  if (verM) {
+    const cmd = buildInspectCommand(verM[1]);
+    if (cmd) return cmd;
+  }
   let idx = -1;
   if (SHELL_COMMANDS.has(clean(tokens[0]))) {
     idx = 0;
@@ -356,6 +391,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
   const history = getHistory(user);
   const transcript = formatTranscript(history);
 
+  let fellBackFromTask = false;
   if (ALLOWED_USERS.includes(user)) {
     const shellCmd = extractShellCommand(message);
     if (shellCmd) {
@@ -401,6 +437,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
         return truncate(agentic);
       } catch (error: any) {
         console.error('opencode run failed, falling back to direct Qwen:', error.message);
+        fellBackFromTask = true;
       }
     }
   } else {
@@ -409,9 +446,9 @@ export async function handleAiMessage(user: string, message: string): Promise<st
 
   try {
     let response = await callQwenDirect(message, history);
-    if (isInabilityClaim(response)) {
-      console.error('Qwen response claimed inability; replacing with truthful fallback.');
-      response = INABILITY_FALLBACK;
+    if (isInabilityClaim(response) || (fellBackFromTask && FAKE_ACTION_RE.test(response))) {
+      console.error('Qwen fallback was untruthful; replacing with truthful fallback.');
+      response = fellBackFromTask ? TASK_FALLBACK : INABILITY_FALLBACK;
     }
     appendMessage(user, 'assistant', response);
     console.log(`AI Response (qwen): ${response}`);
