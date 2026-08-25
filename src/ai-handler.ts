@@ -27,7 +27,7 @@ const SHELL_COMMANDS = new Set([
   'tar','gzip','gunzip','zip','unzip','base64','shasum','md5','cksum','dd',
   'curl','wget','ping','traceroute','dig','nslookup','nc','netstat','lsof','ifconfig','scutil','route','arp',
   'brew','npm','npx','node','python3','python','pip3','pip','git','svn','hg','make','cmake','xcodebuild','swift',
-  'docker','kubectl','sqlite3','osascript','say','afplay','sips','ffmpeg','jq','yq','sh','bash','zsh','sudo',
+  'docker','kubectl','sqlite3','osascript','afplay','sips','ffmpeg','jq','yq','sh','bash','zsh','sudo',
   'system_profiler','diskutil','ioreg','systemsetup','networksetup','security','dscl','launchctl','launchd',
   'killall','pkill','wait','tee','fold','paste','join','comm','nl','od','xxd','hexdump','strings','diff','cmp',
   'patch','rsync','scp','ssh','sftp','ftp','telnet','ruby','perl','php','go','rustc','cargo',
@@ -64,6 +64,14 @@ export function isInabilityClaim(response: string): boolean {
   return INABILITY_RE.some((re) => re.test(response));
 }
 
+function looksLikeUnknownBinary(tokens: string[]): boolean {
+  const t0 = tokens[0];
+  if (!/^[a-zA-Z0-9_.\/~-]+$/.test(t0)) return false;
+  if (t0.includes('/') || t0.startsWith('./') || t0.startsWith('~/')) return true;
+  if (tokens.length > 1 && /^-{1,2}[a-zA-Z0-9]/.test(tokens[1])) return true;
+  return false;
+}
+
 function extractShellCommand(message: string): string | null {
   const text = message.trim();
   if (!text || text.length > 500) return null;
@@ -71,6 +79,8 @@ function extractShellCommand(message: string): string | null {
   const clean = (t: string) => t.replace(/^[^a-zA-Z0-9_./~-]+/, '').toLowerCase();
   let idx = -1;
   if (SHELL_COMMANDS.has(clean(tokens[0]))) {
+    idx = 0;
+  } else if (looksLikeUnknownBinary(tokens)) {
     idx = 0;
   } else {
     const isQuestion = QUESTION_RE.test(text);
