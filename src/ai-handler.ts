@@ -65,7 +65,8 @@ const INABILITY_FALLBACK =
   'or just say it plainly, e.g. "try npm install -g wispr".\n\n' +
   "(The opencode agent was still working on your message and timed out, so this reply comes from the fallback model.)";
 
-const FAKE_ACTION_RE = /\b(?:i'?ll|i will|let me|i'?m going to|i'?m about to|ok,? i'?ll|now i'?ll)\s+(install|run|execute|check|verify|fix|set up|download|build|create|write|open|start|stop|deploy|update|remove|delete|test|try|restart|clone|configure|generate)\b/i;
+const FAKE_ACTION_RE = /\b(?:i'?ll|i will|we'?ll|we will|let me|i'?m going to|i'?m about to|ok,? i'?ll|now i'?ll|i'?m on it)\s+(?:now\s+|just\s+|try (?:to|and)\s+|attempt (?:to|at)\s+|go ahead and\s+|please\s+|continue (?:to|with)\s+)?(?:install|run|execute|check|verify|fix|set up|download|build|create|write|open|start|stop|deploy|update|remove|delete|test|try|restart|clone|configure|generate|continue|proceed|finish|investigate|attempt)\b/i;
+const FAKE_ACTION_GERUND_RE = /\b(?:i'?m|i am|we'?re|we are)(?:\s+(?:on it|now|just|currently|about to))?\s*[-–:]?\s*(?:installing|running|executing|checking|verifying|fixing|setting up|downloading|building|creating|writing|opening|starting|stopping|deploying|updating|removing|deleting|testing|restarting|cloning|configuring|generating|continuing|proceeding|finishing|investigating|attempting|trying)\b/i;
 
 const TASK_FALLBACK =
   "The opencode agent was working on that task but timed out, so this reply comes from the fallback model - which can't run commands itself.\n" +
@@ -113,7 +114,7 @@ function extractShellCommand(message: string): string | null {
     if (cmd) return cmd;
   }
   let idx = -1;
-  if (SHELL_COMMANDS.has(clean(tokens[0]))) {
+  if (SHELL_COMMANDS.has(clean(tokens[0])) && !(clean(tokens[0]) === 'go' && tokens.length > 1 && /^ahead/i.test(clean(tokens[1])))) {
     idx = 0;
   } else if (looksLikeUnknownBinary(tokens)) {
     idx = 0;
@@ -446,7 +447,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
 
   try {
     let response = await callQwenDirect(message, history);
-    if (isInabilityClaim(response) || (fellBackFromTask && FAKE_ACTION_RE.test(response))) {
+    if (isInabilityClaim(response) || FAKE_ACTION_RE.test(response) || FAKE_ACTION_GERUND_RE.test(response)) {
       console.error('Qwen fallback was untruthful; replacing with truthful fallback.');
       response = fellBackFromTask ? TASK_FALLBACK : INABILITY_FALLBACK;
     }
