@@ -22,7 +22,7 @@ let agenticQueue: Promise<string | null> = Promise.resolve(null);
 const SHELL_COMMANDS = new Set([
   'ls','pwd','cd','cat','echo','printf','whoami','id','groups','uname','sw_vers','hostname','date','cal',
   'df','du','ps','top','kill','sleep','uptime','env','export','which','type','command','file','stat','readlink',
-  'head','tail','wc','sort','uniq','cut','tr','grep','egrep','fgrep','sed','awk','find','locate','mdfind','xargs',
+  'head','tail','wc','sort','uniq','cut','tr','grep','egrep','fgrep','sed','awk','mdfind','xargs',
   'mkdir','rmdir','rm','cp','mv','touch','chmod','chown','chgrp','ln','readlink','open','defaults','plutil',
   'tar','gzip','gunzip','zip','unzip','base64','shasum','md5','cksum','dd',
   'curl','wget','ping','traceroute','dig','nslookup','nc','netstat','lsof','ifconfig','scutil','route','arp',
@@ -44,7 +44,7 @@ const INSPECT_VERSION_RE = /(?:^|\b)(?:what|which)\s+version\s+of\s+([a-z0-9][a-
 const INSPECT_STOPWORDS = new Set(['the','this','that','these','those','it','its','my','your','our','their','his','her','a','an','me','us','them','you','we','i','he','she','there','here','now','all','any','some','do']);
 
 
-const TASK_RE = /\b(check|install|run|execut|show|list|find|creat|mak|build|test|anal|writ|read|open|search|updat|remov|delet|copy|move|download|curl|clone|start|stop|restart|status|debug|fix|setup|config|generate|explain)\b/i;
+const TASK_RE = /\b(check\w*|install\w*|run\w*|execut\w*|show\b|list\b|find\w*|locat\w*|search\w*|fetch\w*|retriev\w*|creat\w*|mak\w*|build\w*|test\w*|anal\w*|writ\w*|read\w*|open\w*|updat\w*|remov\w*|delet\w*|copy\b|move\w*|download\w*|curl\b|clone\w*|start\w*|stop\w*|restart\w*|status\b|debug\w*|fix\w*|setup\b|config\w*|generat\w*|explain\w*)\b/i;
 
 const INABILITY_RE = [
   /i (?:haven'?t been able to|am unable to|am not able to|cannot|can'?t|don'?t have|do not have|lack) (?:the )?(?:ability|permission|access|tools?|means?)? ?(?:to )?(?:execute|run|access|open|use)/i,
