@@ -6,7 +6,7 @@ import { runShell } from './shell';
 
 const OPENCODE_BIN = process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode';
 const OPENCODE_CWD = process.env.OPENCODE_CWD || '/Users/gutchapa/.opencode-bot-ws';
-const OPENCODE_TIMEOUT_MS = Number(process.env.OPENCODE_TIMEOUT_MS || 180000);
+const OPENCODE_TIMEOUT_MS = Number(process.env.OPENCODE_TIMEOUT_MS || 300000);
 
 const LLM_ENDPOINT = process.env.LLM_ENDPOINT || 'http://127.0.0.1:8095/v1/chat/completions';
 const LLM_MODEL = process.env.LLM_MODEL || 'qwen3.5-9b';
@@ -62,8 +62,7 @@ const INABILITY_RE = [
 const INABILITY_FALLBACK =
   "I can run that for you - commands execute on this Mac and the output comes back right here in Telegram.\n" +
   "Send me: /execute <command>\n" +
-  'or just say it plainly, e.g. "try npm install -g wispr".\n\n' +
-  "(The opencode agent was still working on your message and timed out, so this reply comes from the fallback model.)";
+  'or just say it plainly, e.g. "try npm install -g wispr".';
 
 const FAKE_ACTION_RE = /\b(?:i'?ll|i will|we'?ll|we will|let me|i'?m going to|i'?m about to|ok,? i'?ll|now i'?ll|i'?m on it)\s+(?:now\s+|just\s+|try (?:to|and)\s+|attempt (?:to|at)\s+|go ahead and\s+|please\s+|continue (?:to|with)\s+)?(?:install|run|execute|check|verify|fix|set up|download|build|create|write|open|start|stop|deploy|update|remove|delete|test|try|restart|clone|configure|generate|continue|proceed|finish|investigate|attempt)\b/i;
 const FAKE_ACTION_GERUND_RE = /\b(?:i'?m|i am|we'?re|we are)(?:\s+(?:on it|now|just|currently|about to))?\s*[-–:]?\s*(?:installing|running|executing|checking|verifying|fixing|setting up|downloading|building|creating|writing|opening|starting|stopping|deploying|updating|removing|deleting|testing|restarting|cloning|configuring|generating|continuing|proceeding|finishing|investigating|attempting|trying)\b/i;
@@ -233,25 +232,57 @@ async function callQwenDirect(message: string, history: HistoryEntry[] = []): Pr
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
   try {
-    const res = await fetch(LLM_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: getAgentState().model || LLM_MODEL,
-        messages: [
-          { role: 'system', content: buildSystemPrompt() },
-          ...(history.length
-            ? history.map((e) => ({ role: e.role, content: e.content }))
-            : [{ role: 'user' as const, content: message }]),
-        ],
-        max_tokens: 512,
-        temperature: 0.7,
-        stream: false,
-      }),
-      signal: controller.signal,
-    });
+    // Sanitize history before sending: a malformed or empty entry used to produce
+    // HTTP 400 from the local LLM. Keep only valid roles with non-empty content,
+    // and cap the prompt so it stays well under the server's context window.
+    const safeHistory = (history || [])
+      .filter(
+        (e) =>
+          e &&
+          (e.role === 'user' || e.role === 'assistant') &&
+          typeof e.content === 'string' &&
+          e.content.trim().length > 0,
+      )
+      .slice(-20)
+      .map((e) => ({ role: e.role, content: e.content.trim() }));
+    const messages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: buildSystemPrompt() },
+      ...(safeHistory.length
+        ? safeHistory
+        : [{ role: 'user', content: message }]),
+    ];
+    const MAX_PROMPT_CHARS = 12000;
+    let total = messages.reduce((n, m) => n + m.content.length, 0);
+    while (total > MAX_PROMPT_CHARS && messages.length > 2) {
+      total -= messages.splice(1, 1)[0].content.length;
+    }
+
+    let res: Response;
+    for (let attempt = 0; ; attempt++) {
+      res = await fetch(LLM_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: getAgentState().model || LLM_MODEL,
+          messages,
+          max_tokens: 512,
+          temperature: 0.7,
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
+      const transient = res.status === 429 || (res.status >= 500 && res.status <= 599);
+      if (res.ok || !transient || attempt >= 1) break;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
     if (!res.ok) {
-      throw new Error(`LLM endpoint returned HTTP ${res.status}`);
+      let bodyText = '';
+      try {
+        bodyText = (await res.text()).slice(0, 300);
+      } catch {
+        /* ignore */
+      }
+      throw new Error(`LLM endpoint returned HTTP ${res.status}: ${bodyText}`);
     }
     const data = (await res.json()) as ChatCompletionResponse;
     const choice = data?.choices?.[0];
