@@ -8,6 +8,13 @@ const OPENCODE_BIN = process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/ope
 const OPENCODE_CWD = process.env.OPENCODE_CWD || '/Users/gutchapa/.opencode-bot-ws';
 const OPENCODE_TIMEOUT_MS = Number(process.env.OPENCODE_TIMEOUT_MS || 300000);
 
+const AGENT_HARDENING_INSTRUCTION =
+  'Do the task NOW using your tools (read, grep, ls, bash) and report the concrete result. ' +
+  'Never end with only intent such as "Let me read that file" or "I will check" - actually do it in this turn.';
+const RETRY_NUDGE =
+  'Your previous reply only promised to do the task instead of doing it. ' +
+  'This time you MUST actually do the work with your tools and give the concrete result.';
+
 const LLM_ENDPOINT = process.env.LLM_ENDPOINT || 'http://127.0.0.1:8095/v1/chat/completions';
 const LLM_MODEL = process.env.LLM_MODEL || 'qwen3.5-9b';
 const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60000);
@@ -71,8 +78,30 @@ const TASK_FALLBACK =
   "The opencode agent was working on that task but timed out, so this reply comes from the fallback model - which can't run commands itself.\n" +
   'To run it directly: send /execute <command> (e.g. /execute npm install -g wispr), or just say it plainly: "try npm install -g wispr".';
 
+const INCOMPLETE_TASK_FALLBACK =
+  "The opencode agent started that task but only said it would do it (e.g. \"Let me read that file\") without actually doing it, so this reply comes from the fallback model - which can't run commands itself.\n" +
+  'To run it directly: send /execute <command>, or just say it plainly, e.g. "read the file for me".';
+
 export function isInabilityClaim(response: string): boolean {
   return INABILITY_RE.some((re) => re.test(response));
+}
+
+const UNFULFILLED_PROMISE_RE = [
+  /\b(?:i'?ll|i will|we'?ll|we will)\s+(?:help you\s+)?(?:to\s+)?(?:read|check|look|examine|investigate|analyz|review|see|take a look|dig|explore|fetch|find|open|pull|verify|confirm|look into|work on|handle|take care of|get back)\w*\b/i,
+  /\blet me\s+(?:first\s+|quickly\s+)?(?:read|check|look|examine|investigate|analyz|review|see|take a look|dig|explore|fetch|find|open|pull|verify|confirm|look into|handle|take care of)\w*\b/i,
+  /\b(?:i'?m|i am)\s+(?:going to|about to)\s+(?:read|check|look|examine|investigate|analyz|review|start|try|find|open|verify|confirm|look into)\w*\b/i,
+  /\blet me (?:take a )?look\b|\blet me read that (?:file|script|code)\b/i,
+  /\b(?:one moment|just a moment|give me (?:a|one) (?:moment|sec|second)|bear with me|hold on|hang on|i'?ll get back to you)\b/i,
+];
+
+const DELIVERED_CONTENT_RE =
+  /(?:```|here'?s|here is|here are|in short|turns out|conclusion|summary|found that|result is|output is|lines? \d+|imports|defines|contains|prints|reads|writes|creates|loads|loops|computes|calls|uses|returns|takes|based on)/i;
+
+export function isUnfulfilledPromise(response: string): boolean {
+  const t = response.trim();
+  if (!t || t.length > 250) return false;
+  if (DELIVERED_CONTENT_RE.test(t)) return false;
+  return UNFULFILLED_PROMISE_RE.some((re) => re.test(t));
 }
 
 function looksLikeUnknownBinary(tokens: string[]): boolean {
@@ -424,6 +453,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
   const transcript = formatTranscript(history);
 
   let fellBackFromTask = false;
+  let agentFallback: 'none' | 'error' | 'incomplete' = 'none';
   if (ALLOWED_USERS.includes(user)) {
     const shellCmd = extractShellCommand(message);
     if (shellCmd) {
@@ -446,6 +476,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
     } else {
       const state = getAgentState();
       const prelude = [
+        AGENT_HARDENING_INSTRUCTION,
         state.goal ? `Ongoing goal: ${state.goal}` : '',
         state.steer ? `Steering: ${state.steer}` : '',
         state.focus ? 'Focus mode is ON: stay tightly on task, no tangential exploration.' : '',
@@ -463,12 +494,25 @@ export async function handleAiMessage(user: string, message: string): Promise<st
       const queued = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message, prelude));
       agenticQueue = queued.then(() => null, () => null);
       try {
-        const agentic = await queued;
-        appendMessage(user, 'assistant', agentic);
-        console.log(`AI Response (opencode): ${agentic}`);
-        return truncate(agentic);
+        let agentic = await queued;
+        if (isUnfulfilledPromise(agentic)) {
+          console.error('Agent response is intent-only; retrying with hardening nudge.');
+          const hardened = agentPrompt + '\n\n' + AGENT_HARDENING_INSTRUCTION + '\n' + RETRY_NUDGE;
+          const retried = agenticQueue.then(() => runOpencodeAgentic(hardened, user, message, prelude));
+          agenticQueue = retried.then(() => null, () => null);
+          agentic = await retried;
+        }
+        if (isUnfulfilledPromise(agentic)) {
+          console.error('Agent still intent-only after retry; falling back to direct Qwen.');
+          agentFallback = 'incomplete';
+        } else {
+          appendMessage(user, 'assistant', agentic);
+          console.log(`AI Response (opencode): ${agentic}`);
+          return truncate(agentic);
+        }
       } catch (error: any) {
         console.error('opencode run failed, falling back to direct Qwen:', error.message);
+        agentFallback = 'error';
         fellBackFromTask = true;
       }
     }
@@ -478,9 +522,14 @@ export async function handleAiMessage(user: string, message: string): Promise<st
 
   try {
     let response = await callQwenDirect(message, history);
-    if (isInabilityClaim(response) || FAKE_ACTION_RE.test(response) || FAKE_ACTION_GERUND_RE.test(response)) {
+    if (
+      isInabilityClaim(response) ||
+      FAKE_ACTION_RE.test(response) ||
+      FAKE_ACTION_GERUND_RE.test(response) ||
+      isUnfulfilledPromise(response)
+    ) {
       console.error('Qwen fallback was untruthful; replacing with truthful fallback.');
-      response = fellBackFromTask ? TASK_FALLBACK : INABILITY_FALLBACK;
+      response = agentFallback === 'incomplete' ? INCOMPLETE_TASK_FALLBACK : fellBackFromTask ? TASK_FALLBACK : INABILITY_FALLBACK;
     }
     appendMessage(user, 'assistant', response);
     console.log(`AI Response (qwen): ${response}`);
