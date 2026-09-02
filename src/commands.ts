@@ -7,7 +7,7 @@ import { sendMediaToCurrentChat } from './runtime/telegram-bot';
 const execFileAsync = promisify(execFile);
 
 // Same gate as the AI handler: only these Telegram user IDs may use shell tools.
-const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '791865934')
+const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

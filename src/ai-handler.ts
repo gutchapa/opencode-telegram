@@ -19,7 +19,7 @@ const LLM_ENDPOINT = process.env.LLM_ENDPOINT || 'http://127.0.0.1:8095/v1/chat/
 const LLM_MODEL = process.env.LLM_MODEL || 'qwen3.5-9b';
 const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60000);
 
-const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '791865934')
+const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

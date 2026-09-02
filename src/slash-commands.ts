@@ -13,7 +13,7 @@ import { runShell, truncate } from './shell';
 
 const CWD = process.env.OPENCODE_CWD || '/Users/gutchapa';
 const HOME = process.env.HOME || '/Users/gutchapa';
-const ALLOWED = (process.env.ALLOWED_TELEGRAM_USERS || '791865934')
+const ALLOWED = (process.env.ALLOWED_TELEGRAM_USERS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
