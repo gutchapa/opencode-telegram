@@ -1,6 +1,8 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { registerPluginCommand } from './sdk/plugin-runtime';
+import { existsSync } from 'fs';
+import { sendMediaToCurrentChat } from './runtime/telegram-bot';
 
 const execFileAsync = promisify(execFile);
 
@@ -35,6 +37,18 @@ function resolvePath(p: string): string {
 }
 
 export function setupCommands(): void {
+  registerPluginCommand('*', 'send', async (user, cmd, args) => {
+    if (!isAllowed(user)) return 'Not authorized.';
+    if (!args.trim()) return 'Usage: /send <file path>';
+    const p = resolvePath(args.trim().replace(/^["']|["']$/g, ''));
+    if (!existsSync(p)) return `File not found: ${p}`;
+    try {
+      await sendMediaToCurrentChat(p);
+      return `Sent \uD83D\uDCCE ${p}`;
+    } catch (e: any) {
+      return `Failed to send: ${e.message}`;
+    }
+  });
   registerPluginCommand('*', 'execute', async (user, cmd, args) => {
     if (!isAllowed(user)) return 'Not authorized.';
     const command = args.trim();

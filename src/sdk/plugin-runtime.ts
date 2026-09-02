@@ -20,12 +20,20 @@ export async function handleCommand(user: string, username: string, command: str
   const trimmed = command.trim();
   let lower = trimmed.toLowerCase();
 
+  // Tolerate a leading "run " prefix (opencode-style "run /cmd") so slash
+  // commands like /send still dispatch to their handler.
+  let body = trimmed;
+  if (lower.startsWith('run ')) {
+    body = trimmed.substring(4);
+    lower = lower.substring(4);
+  }
+
   if (lower.startsWith('/')) {
     lower = lower.substring(1);
   }
 
   const cmdName = lower.split(/\s+/)[0];
-  const args = trimmed.split(/\s+/).slice(1).join(' ');
+  const args = body.split(/\s+/).slice(1).join(' ');
   console.log('Parsed command:', cmdName, 'args:', args);
   // Telegram command menus only allow a-z0-9_, so hyphenated commands arrive
   // as underscores (e.g. /bot_help for /bot-help). Resolve both spellings.
