@@ -5,6 +5,18 @@
 [![license](https://img.shields.io/npm/l/gutchapa-opencode-telegram)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/gutchapa/opencode-telegram)](https://github.com/gutchapa/opencode-telegram)
 
+## Install
+
+One line, ready to go:
+
+```bash
+npm install gutchapa-opencode-telegram
+```
+
+It ships a CLI (`opencode-telegram-bot`) plus an opencode plugin. Set your bot
+token and allowed users, then run it (see the setup section below for the full
+walkthrough — standalone, launchd/systemd, or Docker).
+
 A Telegram bot for [opencode](https://opencode.ai). Chat with your local AI
 assistant from Telegram — run commands, read/search/list files, and control the
 agent with 70+ slash commands (`/reset`, `/status`, `/model`,
