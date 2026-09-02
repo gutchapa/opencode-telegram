@@ -72,9 +72,41 @@ Repo: https://github.com/gutchapa/opencode-telegram
 Happy to answer questions.
 ```
 
-## Short blurb (Discord / Telegram / WhatsApp)
+## Short blurb (Telegram / WhatsApp)
 ```
 📲 opencode × Telegram — chat with your AI agent from your phone.
 70+ slash commands, file sharing both ways, scoped access.
 One line: npm install gutchapa-opencode-telegram
 ```
+
+## Discord — opencode community (https://discord.gg/opencode)
+Post in the designated **showcase / projects / self-promo channel** if one exists. Most servers have a rule about promo — keep it early, honest, and one post.
+
+### Standard showcase post
+```
+👋 Hey! Wanted to share something I built for opencode.
+
+A Telegram bot so you can drive your opencode coding agent from your phone:
+- 70+ slash commands (/new, /model, /execute, /send <file> …)
+- send it a file and get the result back in the chat
+- switch models and control the agent remotely
+- access scoped to your own Telegram user id
+
+One-line install:
+npm install gutchapa-opencode-telegram
+
+📦 https://www.npmjs.com/package/gutchapa-opencode-telegram
+🔧 https://github.com/gutchapa/opencode-telegram
+
+Happy to take feedback / feature requests!
+```
+
+### Minimal one-liner (if self-promo is discouraged)
+```
+Built a Telegram bot for opencode — chat with your local coding agent from your phone. 70+ slash commands, file exchange both ways, scoped access. npm install gutchapa-opencode-telegram
+```
+
+### Etiquette tips
+- Check the channel rules before posting; many servers gate promo to a specific channel or a "Self-promo Saturday" type thread.
+- If asked for more, offer the feature list and invite feedback rather than re-posting.
+- Don't DM the maintainers unsolicited promo.
