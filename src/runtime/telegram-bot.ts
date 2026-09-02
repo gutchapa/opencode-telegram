@@ -3,6 +3,8 @@ import { handleCommand } from './command-handler';
 import { getAgentState } from '../agent-state';
 import { syncTelegramMenuCommands } from '../telegram-menu';
 import https from 'https';
+import { readFileSync, existsSync } from 'fs';
+import { basename } from 'path';
 
 let botStarted = false;
 let lastUpdateId = 0;
@@ -47,6 +49,85 @@ function sendTelegramMessage(chatId: number, text: string): Promise<void> {
     req.write(postData);
     req.end();
   });
+}
+
+// --- Media sending support ---
+let activeChatId: number | null = null;
+export function setActiveChat(chatId: number): void {
+  activeChatId = chatId;
+}
+export function getActiveChat(): number | null {
+  return activeChatId;
+}
+
+function inferMediaKind(filePath: string): 'photo' | 'video' | 'document' {
+  const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'].includes(ext)) return 'photo';
+  if (['mp4', 'mov', 'mkv'].includes(ext)) return 'video';
+  return 'document';
+}
+
+function sendTelegramMedia(chatId: number, filePath: string, kind: 'photo' | 'video' | 'document' | 'animation' | 'audio', caption?: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const token = getBotToken();
+    if (!token) {
+      reject(new Error('No bot token found'));
+      return;
+    }
+    let file: Buffer;
+    try {
+      file = readFileSync(filePath);
+    } catch (e: any) {
+      reject(e);
+      return;
+    }
+    const filename = basename(filePath);
+    const boundary = '----gutchapa' + Date.now().toString(16);
+    const fieldParts: Buffer[] = [];
+    const fields: Array<[string, string]> = [['chat_id', String(chatId)]];
+    if (caption) fields.push(['caption', caption]);
+    for (const [name, value] of fields) {
+      fieldParts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+    }
+    const fileHeader = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${kind}"; filename="${filename}"\r\nContent-Type: application/octet-stream\r\n\r\n`);
+    const footer = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const body = Buffer.concat([...fieldParts, fileHeader, file, footer]);
+    const method = 'send' + kind.charAt(0).toUpperCase() + kind.slice(1);
+    const options: any = {
+      hostname: 'api.telegram.org',
+      path: `/bot${token}/${method}`,
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': body.length,
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(data);
+          if (response.ok) resolve();
+          else reject(new Error(response.description || 'Failed to send media'));
+        } catch (e: any) {
+          reject(e);
+        }
+      });
+    });
+    req.on('error', (error: any) => {
+      reject(error);
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+export function sendMediaToCurrentChat(filePath: string, kind?: 'photo' | 'video' | 'document' | 'animation' | 'audio', caption?: string): Promise<void> {
+  if (activeChatId == null) return Promise.reject(new Error('No active chat'));
+  return sendTelegramMedia(activeChatId, filePath, kind ?? inferMediaKind(filePath), caption);
 }
 
 function sendChatAction(chatId: number, action: string): Promise<void> {
@@ -133,6 +214,7 @@ export async function startBot(): Promise<void> {
                 lastUpdateId = Math.max(lastUpdateId, update.update_id);
                 if (update.message) {
                   const chatId = update.message.chat.id;
+                  setActiveChat(chatId);
                   const text = update.message.text;
                   const username = update.message.from ? update.message.from.username : '';
                   const userId = update.message.from ? update.message.from.id.toString() : '';
@@ -156,6 +238,12 @@ export async function startBot(): Promise<void> {
                   result.then((response) => {
                     clearInterval(typingInterval);
                     if (response) {
+                      const trimmedResponse = response.trim();
+                      if (existsSync(trimmedResponse)) {
+                        sendMediaToCurrentChat(trimmedResponse).catch((err: any) => {
+                          console.error('Failed to auto-send media:', err.message);
+                        });
+                      }
                       console.log('Sending response:', response);
                       sendTelegramMessage(chatId, response).catch((err) => {
                         console.error('Failed to send response:', err.message);
