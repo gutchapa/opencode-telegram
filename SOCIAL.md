@@ -110,3 +110,45 @@ Built a Telegram bot for opencode — chat with your local coding agent from you
 - Check the channel rules before posting; many servers gate promo to a specific channel or a "Self-promo Saturday" type thread.
 - If asked for more, offer the feature list and invite feedback rather than re-posting.
 - Don't DM the maintainers unsolicited promo.
+
+## Hacker News — Show HN (news.ycombinator.com)
+Submit as a **link** to the GitHub repo. Title:
+```
+Show HN: Telegram bot for opencode – chat with your local AI coding agent from your phone
+```
+Paste this as your **first comment** (HN etiquette: factual, no hype, invite feedback):
+```
+I built a Telegram bot that connects to opencode, the open-source coding agent. It turns the agent into a Telegram chat you can drive from your phone.
+
+- 70+ slash commands (/new, /model, /execute, /send <file> …)
+- send a file and get the result back; media works both ways
+- switch models / control the agent remotely
+- access scoped to your own Telegram user id
+- runs standalone (opencode-telegram-bot) or as an opencode plugin, under launchd/systemd/Docker
+
+Setup is one line, then set TELEGRAM_BOT_TOKEN + ALLOWED_TELEGRAM_USERS:
+npm install gutchapa-opencode-telegram
+
+Repo: https://github.com/gutchapa/opencode-telegram
+NPM: https://www.npmjs.com/package/gutchapa-opencode-telegram
+
+Happy to hear feedback — especially on the /send media flow and the slash-command surface.
+```
+
+## opencode GitHub Discussions (github.com/anomalyco/opencode/discussions)
+Post in a **Show & tell / Community** category. Title + body:
+```
+Telegram bot for opencode — chat with your coding agent from your phone
+
+I built a Telegram bot that bridges opencode to Telegram. You can drive your agent from anywhere: 70+ slash commands, send it a file and get the result back, switch models, and access is scoped to your own Telegram user id.
+
+It ships as a CLI (opencode-telegram-bot) and as an opencode plugin, and can run standalone or under launchd/systemd/Docker.
+
+One-line install:
+npm install gutchapa-opencode-telegram
+
+Repo: https://github.com/gutchapa/opencode-telegram
+NPM: https://www.npmjs.com/package/gutchapa-opencode-telegram
+
+Open to feedback / feature requests — especially around the /send media flow.
+```
