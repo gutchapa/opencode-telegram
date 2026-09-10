@@ -7,6 +7,9 @@ import { runShell } from './shell';
 const OPENCODE_BIN = process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode';
 const OPENCODE_CWD = process.env.OPENCODE_CWD || '/Users/gutchapa/.opencode-bot-ws';
 const OPENCODE_TIMEOUT_MS = Number(process.env.OPENCODE_TIMEOUT_MS || 300000);
+// Primary model for all bot replies. Overridable via env; defaults to the
+// model this bot is meant to run on (no local llama.cpp required).
+const OPENCODE_MODEL = process.env.OPENCODE_MODEL || 'opencode/muse-spark-1.3-contributor-free';
 
 const AGENT_HARDENING_INSTRUCTION =
   'Do the task NOW using your tools (read, grep, ls, bash) and report the concrete result. ' +
@@ -201,7 +204,7 @@ function buildSystemPrompt(): string {
   const abs = Math.abs(offsetMinutes);
   const tz = `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
   return (
-    'You are opencode, the Telegram assistant for the user\'s Mac, running locally via llama.cpp (Qwen) and wired into the opencode CLI. ' +
+    'You are opencode, the Telegram assistant for the user\'s Mac, powered by Muse Spark 1.3 via OpenCode Zen and wired into the opencode CLI. ' +
     'The bot HAS real abilities: it executes shell commands (via /execute, /bash, /exec and its agentic opencode path), reads/searches/lists files, and acts as a coding agent. ' +
     'Never claim you cannot execute shell commands, read files, or use tools - the bot can. ' +
     'If you cannot run a tool yourself in this response, still do not say the bot is incapable: tell the user to use the relevant slash command (e.g. /execute <command>) or that the command is being run. ' +
@@ -216,7 +219,7 @@ function cannedResponse(message: string): string | null {
     hello: 'Hello! I\'m your opencode bot. I can help you with various tasks.',
     hi: 'Hi there! How can I assist you?',
     help: 'I can execute terminal commands, read files, search for patterns, and more. Try /help to see all commands.',
-    'who are you': 'I\'m opencode, a local AI-powered Telegram bot that runs on Qwen.',
+    'who are you': 'I\'m opencode, a Telegram bot powered by Muse Spark 1.3 via OpenCode Zen.',
     'what can you do': 'I can run terminal commands, read files, search files, list directories, and respond to your messages.',
   };
   const lowerMsg = message.toLowerCase();
@@ -387,7 +390,7 @@ async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessag
     return await runAgenticViaClient(turnPrompt, user);
   }
 
-  const child = spawn(OPENCODE_BIN, ['run', fullPrompt, '--log-level', 'ERROR', '--auto'], {
+  const child = spawn(OPENCODE_BIN, ['run', fullPrompt, '--model', OPENCODE_MODEL, '--log-level', 'ERROR', '--auto'], {
     cwd: OPENCODE_CWD,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, NO_COLOR: '1' },
@@ -472,10 +475,12 @@ export async function handleAiMessage(user: string, message: string): Promise<st
         return msg;
       }
     }
-    const isShortChat = message.trim().length <= 80 && !TASK_RE.test(message);
-    if (isShortChat) {
-      console.log('Short conversational message; skipping opencode run (direct model)');
-    } else {
+    // Every conversational message goes through the opencode path on
+    // OPENCODE_MODEL (Muse Spark via OpenCode Zen). The old short-chat
+    // bypass to the local llama endpoint is removed: llama is not required
+    // and a dead endpoint produced parroted "I heard you say" fallbacks.
+    {
+      console.log('Routing conversational message via opencode run');
       const state = getAgentState();
       const prelude = [
         AGENT_HARDENING_INSTRUCTION,
