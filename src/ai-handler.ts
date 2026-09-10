@@ -2,7 +2,6 @@ import { spawn } from 'child_process';
 import { setAiHandler, getRegisteredCommands } from './sdk/plugin-runtime';
 import { getAgentState } from './agent-state';
 import { appendMessage, getHistory, formatTranscript, HistoryEntry } from './conversation-memory';
-import { runShell } from './shell';
 
 const OPENCODE_BIN = process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode';
 const OPENCODE_CWD = process.env.OPENCODE_CWD || '/Users/gutchapa/.opencode-bot-ws';
@@ -32,32 +31,12 @@ const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '')
 
 let agenticQueue: Promise<string | null> = Promise.resolve(null);
 
-const SHELL_COMMANDS = new Set([
-  'ls','pwd','cd','cat','echo','printf','whoami','id','groups','uname','sw_vers','hostname','date','cal',
-  'df','du','ps','top','kill','sleep','uptime','env','export','which','type','command','file','stat','readlink',
-  'head','tail','wc','sort','uniq','cut','tr','grep','egrep','fgrep','sed','awk','mdfind','xargs',
-  'mkdir','rmdir','rm','cp','mv','touch','chmod','chown','chgrp','ln','readlink','open','defaults','plutil',
-  'tar','gzip','gunzip','zip','unzip','base64','shasum','md5','cksum','dd',
-  'curl','wget','ping','traceroute','dig','nslookup','nc','netstat','lsof','ifconfig','scutil','route','arp',
-  'brew','npm','npx','node','python3','python','pip3','pip','git','svn','hg','make','cmake','xcodebuild','swift',
-  'docker','kubectl','sqlite3','osascript','afplay','sips','ffmpeg','jq','yq','sh','bash','zsh','sudo',
-  'system_profiler','diskutil','ioreg','systemsetup','networksetup','security','dscl','launchctl','launchd',
-  'killall','pkill','wait','tee','fold','paste','join','comm','nl','od','xxd','hexdump','strings','diff','cmp',
-  'patch','rsync','scp','ssh','sftp','ftp','telnet','ruby','perl','php','go','rustc','cargo',
-  'watch','duf','broot','eza','exa','bat','fd','rg','ag','ack','delta','zoxide','fzf',
-]);
-
-const QUESTION_RE = /^(how|what|why|when|which|who|whom|whose|where|is|are|was|were|can|could|should|would|will|does|did)\b/i;
-const SHELL_STRONG_RE = /\b(try|run|execute|exec|show|print)\b/i;
-const SHELL_WEAK_RE = /\b(use|please|now|just|do|go ahead|let'?s)\b/i;
-const SHELL_FILLER = /^(me|the|a|an|us|out)$/i;
-const INSPECT_ABOUT_RE = /(?:^|\b)(?:wht|what|how)\s+about\s+([a-z0-9][a-z0-9._-]*)/i;
-const INSPECT_STATE_RE = /(?:^|\b)(?:check|see|verify|is|are)\s+(?:if\s+)?([a-z0-9][a-z0-9._-]*)\s+(?:is\s+|are\s+)?(?:installed|running|available|present)\b/i;
-const INSPECT_VERSION_RE = /(?:^|\b)(?:what|which)\s+version\s+of\s+([a-z0-9][a-z0-9._-]*)/i;
-const INSPECT_STOPWORDS = new Set(['the','this','that','these','those','it','its','my','your','our','their','his','her','a','an','me','us','them','you','we','i','he','she','there','here','now','all','any','some','do','not','no','never','nt','is','are','was','were','be','been','being','does','did','has','have','had','can','could','should','would','will','shall','may','might','if','whether','or','and','but','of','for','on','in','at','to','llm','model','bot','telegram','opencode']);
-
-
-const TASK_RE = /\b(check\w*|install\w*|run\w*|execut\w*|show\b|list\b|find\w*|locat\w*|search\w*|fetch\w*|retriev\w*|creat\w*|mak\w*|build\w*|test\w*|anal\w*|writ\w*|read\w*|open\w*|updat\w*|remov\w*|delet\w*|copy\b|move\w*|download\w*|curl\b|clone\w*|start\w*|stop\w*|restart\w*|status\b|debug\w*|fix\w*|setup\b|config\w*|generat\w*|explain\w*)\b/i;
+// NOTE: an earlier version of this file contained a regex front-gate
+// (SHELL_COMMANDS / INSPECT_* / extractShellCommand) that guessed shell
+// commands from plain text before any model ran. It was removed: plain
+// text now always goes to the model like openclaw. Explicit slash commands
+// (/execute, /read, ...) still dispatch through the command layer.
+// Response validators below judge model OUTPUT (fallback chains) — kept.
 
 const INABILITY_RE = [
   /i (?:haven'?t been able to|am unable to|am not able to|cannot|can'?t|don'?t have|do not have|lack) (?:the )?(?:ability|permission|access|tools?|means?)? ?(?:to )?(?:execute|run|access|open|use)/i,
@@ -75,14 +54,14 @@ const INABILITY_RE = [
 const INABILITY_FALLBACK =
   "I can run that for you - commands execute on this Mac and the output comes back right here in Telegram.\n" +
   "Send me: /execute <command>\n" +
-  'or just say it plainly, e.g. "try npm install -g wispr".';
+  'e.g. "/execute npm install -g wispr".';
 
 const FAKE_ACTION_RE = /\b(?:i'?ll|i will|we'?ll|we will|let me|i'?m going to|i'?m about to|ok,? i'?ll|now i'?ll|i'?m on it)\s+(?:now\s+|just\s+|try (?:to|and)\s+|attempt (?:to|at)\s+|go ahead and\s+|please\s+|continue (?:to|with)\s+)?(?:install|run|execute|check|verify|fix|set up|download|build|create|write|open|start|stop|deploy|update|remove|delete|test|try|restart|clone|configure|generate|continue|proceed|finish|investigate|attempt)\b/i;
 const FAKE_ACTION_GERUND_RE = /\b(?:i'?m|i am|we'?re|we are)(?:\s+(?:on it|now|just|currently|about to))?\s*[-–:]?\s*(?:installing|running|executing|checking|verifying|fixing|setting up|downloading|building|creating|writing|opening|starting|stopping|deploying|updating|removing|deleting|testing|restarting|cloning|configuring|generating|continuing|proceeding|finishing|investigating|attempting|trying)\b/i;
 
 const TASK_FALLBACK =
   "The opencode agent was working on that task but timed out, so this reply comes from the fallback model - which can't run commands itself.\n" +
-  'To run it directly: send /execute <command> (e.g. /execute npm install -g wispr), or just say it plainly: "try npm install -g wispr".';
+  'To run it directly: send /execute <command> (e.g. /execute npm install -g wispr).';
 
 const INCOMPLETE_TASK_FALLBACK =
   "The opencode agent started that task but only said it would do it (e.g. \"Let me read that file\") without actually doing it, so this reply comes from the fallback model - which can't run commands itself.\n" +
@@ -108,74 +87,6 @@ export function isUnfulfilledPromise(response: string): boolean {
   if (!t || t.length > 250) return false;
   if (DELIVERED_CONTENT_RE.test(t)) return false;
   return UNFULFILLED_PROMISE_RE.some((re) => re.test(t));
-}
-
-function looksLikeUnknownBinary(tokens: string[]): boolean {
-  const t0 = tokens[0];
-  if (!/^[a-zA-Z0-9_.\/~-]+$/.test(t0)) return false;
-  if (t0.includes('/') || t0.startsWith('./') || t0.startsWith('~/')) return true;
-  if (tokens.length > 1 && /^-{1,2}[a-zA-Z0-9]/.test(tokens[1])) return true;
-  return false;
-}
-
-function buildInspectCommand(subject: string): string | null {
-  let s = subject.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
-  s = s.replace(/\.(js|ts|py|rb|go|rs|exe|sh|app|dmg|json|lock)$/i, '');
-  if (!s || s.length > 40 || !/^[a-z0-9._-]+$/.test(s)) return null;
-  if (INSPECT_STOPWORDS.has(s)) return null;
-  if (['cd','pwd','echo','exit','source','export','alias','true','false','test','help'].includes(s)) return null;
-  return `${s} --version`;
-}
-
-function extractShellCommand(message: string): string | null {
-  const text = message.trim();
-  if (!text || text.length > 500) return null;
-  const tokens = text.split(/\s+/);
-  const clean = (t: string) => t.replace(/^[^a-zA-Z0-9_./~-]+/, '').toLowerCase();
-  const aboutM = text.match(INSPECT_ABOUT_RE);
-  if (aboutM) {
-    const cmd = buildInspectCommand(aboutM[1]);
-    if (cmd) return cmd;
-  }
-  const stateM = text.match(INSPECT_STATE_RE);
-  if (stateM) {
-    const cmd = buildInspectCommand(stateM[1]);
-    if (cmd) return cmd;
-  }
-  const verM = text.match(INSPECT_VERSION_RE);
-  if (verM) {
-    const cmd = buildInspectCommand(verM[1]);
-    if (cmd) return cmd;
-  }
-  let idx = -1;
-  if (SHELL_COMMANDS.has(clean(tokens[0])) && !(clean(tokens[0]) === 'go' && tokens.length > 1 && /^ahead/i.test(clean(tokens[1])))) {
-    idx = 0;
-  } else if (looksLikeUnknownBinary(tokens)) {
-    idx = 0;
-  } else {
-    const isQuestion = QUESTION_RE.test(text);
-    for (let i = 0; i < tokens.length; i++) {
-      const strong = SHELL_STRONG_RE.test(tokens[i]);
-      const weak = SHELL_WEAK_RE.test(tokens[i]);
-      if (!(strong || (weak && !isQuestion))) continue;
-      let j = i + 1;
-      if (j < tokens.length && SHELL_FILLER.test(clean(tokens[j]))) j++;
-      if (j < tokens.length && SHELL_COMMANDS.has(clean(tokens[j]))) {
-        idx = j;
-        break;
-      }
-      if (strong) break;
-    }
-  }
-  if (idx === -1) return null;
-  let cmd = tokens.slice(idx).join(' ');
-  const cutAt = cmd.search(
-    /\s+(command|output|result|results|here|please|now|thanks|for me|to telegram|in telegram|to terminal|on terminal|in terminal|your terminal|the terminal|and then|then|and show|show me|and print)\b/i
-  );
-  if (cutAt !== -1) cmd = cmd.slice(0, cutAt);
-  cmd = cmd.replace(/[,.…\s]+$/g, '').trim();
-  if (!cmd || cmd.length > 200) return null;
-  return cmd;
 }
 
 // In-process opencode SDK client, injected when this package runs as an opencode
@@ -442,19 +353,9 @@ async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessag
 export async function handleAiMessage(user: string, message: string): Promise<string | null> {
   console.log(`AI Handler: User ${user} said: "${message}"`);
 
-  const commandIntent = /\b(how|what|usage|explain|use|help|mean)\b/i.test(message);
-  const slashToken = message.match(/\/([a-z][a-z0-9_-]{1,31})\b/i);
-  if (commandIntent && slashToken) {
-    const entry = getRegisteredCommands().get(slashToken[1].toLowerCase());
-    if (entry) {
-      const result = await entry.handler(user, entry.command, '');
-      if (result) {
-        console.log(`AI Response (command usage): ${result}`);
-        return truncate(result);
-      }
-    }
-  }
-
+  // No front-gate guessing: every message goes to the model like openclaw.
+  // Explicit slash commands (/execute, /read, ...) still dispatch through
+  // the command layer; nothing here interprets plain text as commands.
   if (!message.trim()) {
     return null;
   }
@@ -467,21 +368,6 @@ export async function handleAiMessage(user: string, message: string): Promise<st
   let fellBackFromTask = false;
   let agentFallback: 'none' | 'error' | 'incomplete' = 'none';
   if (ALLOWED_USERS.includes(user)) {
-    const shellCmd = extractShellCommand(message);
-    if (shellCmd) {
-      try {
-        const output = await runShell(shellCmd);
-        const result = `$ ${shellCmd}\n${output}`;
-        appendMessage(user, 'assistant', result);
-        console.log(`AI Response (shell): ${result}`);
-        return truncate(result);
-      } catch (error: any) {
-        console.error('Shell command failed:', error.message);
-        const msg = `Shell command failed: ${error.message}`;
-        appendMessage(user, 'assistant', msg);
-        return msg;
-      }
-    }
     // Every conversational message goes through the opencode path on
     // OPENCODE_MODEL (Muse Spark via OpenCode Zen). The old short-chat
     // bypass to the local llama endpoint is removed: llama is not required
