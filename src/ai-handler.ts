@@ -9,9 +9,14 @@ const OPENCODE_TIMEOUT_MS = Number(process.env.OPENCODE_TIMEOUT_MS || 300000);
 // Model for all bot replies, keyed in via the OPENCODE_MODEL environment
 // variable (same pattern as OPENCODE_BIN / OPENCODE_CWD). When unset or
 // empty, no --model flag is passed and the run inherits whatever model the
-// bot's opencode config defines. Nothing is hardcoded here.
-const OPENCODE_MODEL = (process.env.OPENCODE_MODEL || '').trim();
-const OPENCODE_MODEL_LABEL = OPENCODE_MODEL || "this bot's opencode-config default";
+// bot's opencode config defines. Nothing is hardcoded here. Read live (not
+// a load-time const) so /model can switch it without a restart.
+export function getOpencodeModel(): string {
+  return (process.env.OPENCODE_MODEL || '').trim();
+}
+export function getOpencodeModelLabel(): string {
+  return getOpencodeModel() || "this bot's opencode-config default";
+}
 
 const AGENT_HARDENING_INSTRUCTION =
   'Do the task NOW using your tools (read, grep, ls, bash) and report the concrete result. ' +
@@ -19,10 +24,6 @@ const AGENT_HARDENING_INSTRUCTION =
 const RETRY_NUDGE =
   'Your previous reply only promised to do the task instead of doing it. ' +
   'This time you MUST actually do the work with your tools and give the concrete result.';
-
-const LLM_ENDPOINT = process.env.LLM_ENDPOINT || 'http://127.0.0.1:8095/v1/chat/completions';
-const LLM_MODEL = process.env.LLM_MODEL || 'qwen3.5-9b';
-const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60000);
 
 const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '')
   .split(',')
@@ -37,39 +38,6 @@ let agenticQueue: Promise<string | null> = Promise.resolve(null);
 // text now always goes to the model like openclaw. Explicit slash commands
 // (/execute, /read, ...) still dispatch through the command layer.
 // Response validators below judge model OUTPUT (fallback chains) — kept.
-
-const INABILITY_RE = [
-  /i (?:haven'?t been able to|am unable to|am not able to|cannot|can'?t|don'?t have|do not have|lack) (?:the )?(?:ability|permission|access|tools?|means?)? ?(?:to )?(?:execute|run|access|open|use)/i,
-  /i can only (?:generate|provide|output|create) text/i,
-  /i (?:cannot|can'?t) (?:execute|run) (?:shell )?(?:commands?|code)/i,
-  /(?:you|please|you'?ll need to) (?:can )?(?:run|execute|paste|copy)[^.]*these commands?/i,
-  /i'?m (?:just|only) a (?:text|language|chat) model/i,
-  /no (?:shell|terminal|command[ -]line|filesystem) access/i,
-  /i (?:don'?t|do not) (?:have|possess) (?:shell|terminal|command[ -]line|filesystem|tool)/i,
-  /i have no (?:ability|way|access|permission)/i,
-  /these commands? (?:into|in|to) your/i,
-  /in your (?:own )?terminal/i,
-];
-
-const INABILITY_FALLBACK =
-  "I can run that for you - commands execute on this Mac and the output comes back right here in Telegram.\n" +
-  "Send me: /execute <command>\n" +
-  'e.g. "/execute npm install -g wispr".';
-
-const FAKE_ACTION_RE = /\b(?:i'?ll|i will|we'?ll|we will|let me|i'?m going to|i'?m about to|ok,? i'?ll|now i'?ll|i'?m on it)\s+(?:now\s+|just\s+|try (?:to|and)\s+|attempt (?:to|at)\s+|go ahead and\s+|please\s+|continue (?:to|with)\s+)?(?:install|run|execute|check|verify|fix|set up|download|build|create|write|open|start|stop|deploy|update|remove|delete|test|try|restart|clone|configure|generate|continue|proceed|finish|investigate|attempt)\b/i;
-const FAKE_ACTION_GERUND_RE = /\b(?:i'?m|i am|we'?re|we are)(?:\s+(?:on it|now|just|currently|about to))?\s*[-–:]?\s*(?:installing|running|executing|checking|verifying|fixing|setting up|downloading|building|creating|writing|opening|starting|stopping|deploying|updating|removing|deleting|testing|restarting|cloning|configuring|generating|continuing|proceeding|finishing|investigating|attempting|trying)\b/i;
-
-const TASK_FALLBACK =
-  "The opencode agent was working on that task but timed out, so this reply comes from the fallback model - which can't run commands itself.\n" +
-  'To run it directly: send /execute <command> (e.g. /execute npm install -g wispr).';
-
-const INCOMPLETE_TASK_FALLBACK =
-  "The opencode agent started that task but only said it would do it (e.g. \"Let me read that file\") without actually doing it, so this reply comes from the fallback model - which can't run commands itself.\n" +
-  'To run it directly: send /execute <command>, or just say it plainly, e.g. "read the file for me".';
-
-export function isInabilityClaim(response: string): boolean {
-  return INABILITY_RE.some((re) => re.test(response));
-}
 
 const UNFULFILLED_PROMISE_RE = [
   /\b(?:i'?ll|i will|we'?ll|we will)\s+(?:help you\s+)?(?:to\s+)?(?:read|check|look|examine|investigate|analyz|review|see|take a look|dig|explore|fetch|find|open|pull|verify|confirm|look into|work on|handle|take care of|get back)\w*\b/i,
@@ -118,7 +86,7 @@ function buildSystemPrompt(): string {
   const abs = Math.abs(offsetMinutes);
   const tz = `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
   return (
-    `You are opencode, the Telegram assistant for the user\'s Mac, running on ${OPENCODE_MODEL_LABEL} and wired into the opencode CLI. ` +
+    `You are opencode, the Telegram assistant for the user\'s Mac, running on ${getOpencodeModelLabel()} and wired into the opencode CLI. ` +
     'The bot HAS real abilities: it executes shell commands (via /execute, /bash, /exec and its agentic opencode path), reads/searches/lists files, and acts as a coding agent. ' +
     'Never claim you cannot execute shell commands, read files, or use tools - the bot can. ' +
     'If you cannot run a tool yourself in this response, still do not say the bot is incapable: tell the user to use the relevant slash command (e.g. /execute <command>) or that the command is being run. ' +
@@ -133,7 +101,7 @@ function cannedResponse(message: string): string | null {
     hello: 'Hello! I\'m your opencode bot. I can help you with various tasks.',
     hi: 'Hi there! How can I assist you?',
     help: 'I can execute terminal commands, read files, search for patterns, and more. Try /help to see all commands.',
-    'who are you': `I'm opencode, a Telegram bot running on ${OPENCODE_MODEL_LABEL}.`,
+    'who are you': `I'm opencode, a Telegram bot running on ${getOpencodeModelLabel()}.`,
     'what can you do': 'I can run terminal commands, read files, search files, list directories, and respond to your messages.',
   };
   const lowerMsg = message.toLowerCase();
@@ -154,98 +122,8 @@ function cleanFences(text: string): string {
     .trim();
 }
 
-function extractAnswer(content: string): string {
-  const answerMatch = content.match(/<answer>([\s\S]*?)<\/answer>/);
-  if (answerMatch) {
-    return answerMatch[1].trim();
-  }
-  return content.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-}
-
 function truncate(text: string, max = 4000): string {
   return text.length > max ? text.slice(0, max) + '\n\n…(truncated)' : text;
-}
-
-interface ChatCompletionChoice {
-  message?: {
-    content?: string;
-    reasoning_content?: string;
-  };
-}
-interface ChatCompletionResponse {
-  choices?: ChatCompletionChoice[];
-}
-
-async function callQwenDirect(message: string, history: HistoryEntry[] = []): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
-  try {
-    // Sanitize history before sending: a malformed or empty entry used to produce
-    // HTTP 400 from the local LLM. Keep only valid roles with non-empty content,
-    // and cap the prompt so it stays well under the server's context window.
-    const safeHistory = (history || [])
-      .filter(
-        (e) =>
-          e &&
-          (e.role === 'user' || e.role === 'assistant') &&
-          typeof e.content === 'string' &&
-          e.content.trim().length > 0,
-      )
-      .slice(-20)
-      .map((e) => ({ role: e.role, content: e.content.trim() }));
-    const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: buildSystemPrompt() },
-      ...(safeHistory.length
-        ? safeHistory
-        : [{ role: 'user', content: message }]),
-    ];
-    const MAX_PROMPT_CHARS = 12000;
-    let total = messages.reduce((n, m) => n + m.content.length, 0);
-    while (total > MAX_PROMPT_CHARS && messages.length > 2) {
-      total -= messages.splice(1, 1)[0].content.length;
-    }
-
-    let res: Response;
-    for (let attempt = 0; ; attempt++) {
-      res = await fetch(LLM_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: getAgentState().model || LLM_MODEL,
-          messages,
-          max_tokens: 512,
-          temperature: 0.7,
-          stream: false,
-        }),
-        signal: controller.signal,
-      });
-      const transient = res.status === 429 || (res.status >= 500 && res.status <= 599);
-      if (res.ok || !transient || attempt >= 1) break;
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-    if (!res.ok) {
-      let bodyText = '';
-      try {
-        bodyText = (await res.text()).slice(0, 300);
-      } catch {
-        /* ignore */
-      }
-      throw new Error(`LLM endpoint returned HTTP ${res.status}: ${bodyText}`);
-    }
-    const data = (await res.json()) as ChatCompletionResponse;
-    const choice = data?.choices?.[0];
-    let content: string = choice?.message?.content ?? '';
-    if (!content) {
-      content = choice?.message?.reasoning_content ?? '';
-    }
-    const answer = extractAnswer(content);
-    if (!answer) {
-      throw new Error('Empty LLM response');
-    }
-    return answer;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function runAgenticViaClient(message: string, user: string): Promise<string> {
@@ -305,8 +183,9 @@ async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessag
   }
 
   const args = ['run', fullPrompt, '--log-level', 'ERROR', '--auto'];
-  if (OPENCODE_MODEL) {
-    args.splice(2, 0, '--model', OPENCODE_MODEL);
+  const liveModel = getOpencodeModel();
+  if (liveModel) {
+    args.splice(2, 0, '--model', liveModel);
   }
   const child = spawn(OPENCODE_BIN, args, {
     cwd: OPENCODE_CWD,
@@ -365,11 +244,11 @@ export async function handleAiMessage(user: string, message: string): Promise<st
   const history = getHistory(user);
   const transcript = formatTranscript(history);
 
-  let fellBackFromTask = false;
   let agentFallback: 'none' | 'error' | 'incomplete' = 'none';
+  let lastError = '';
   if (ALLOWED_USERS.includes(user)) {
     // Every conversational message goes through the opencode path on
-    // OPENCODE_MODEL (Muse Spark via OpenCode Zen). The old short-chat
+    // OPENCODE_MODEL env. The old short-chat
     // bypass to the local llama endpoint is removed: llama is not required
     // and a dead endpoint produced parroted "I heard you say" fallbacks.
     {
@@ -403,7 +282,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
           agentic = await retried;
         }
         if (isUnfulfilledPromise(agentic)) {
-          console.error('Agent still intent-only after retry; falling back to direct Qwen.');
+          console.error('Agent still intent-only after retry; reporting failure honestly.');
           agentFallback = 'incomplete';
         } else {
           appendMessage(user, 'assistant', agentic);
@@ -411,45 +290,28 @@ export async function handleAiMessage(user: string, message: string): Promise<st
           return truncate(agentic);
         }
       } catch (error: any) {
-        console.error('opencode run failed, falling back to direct Qwen:', error.message);
+        console.error('opencode run failed:', error.message);
         agentFallback = 'error';
-        fellBackFromTask = true;
+        lastError = error.message;
       }
     }
   } else {
-    console.log(`User ${user} not in allowed list; direct Qwen only (no tools)`);
-  }
-
-  try {
-    let response = await callQwenDirect(message, history);
-    if (
-      isInabilityClaim(response) ||
-      FAKE_ACTION_RE.test(response) ||
-      FAKE_ACTION_GERUND_RE.test(response) ||
-      isUnfulfilledPromise(response)
-    ) {
-      console.error('Qwen fallback was untruthful; replacing with truthful fallback.');
-      response = agentFallback === 'incomplete' ? INCOMPLETE_TASK_FALLBACK : fellBackFromTask ? TASK_FALLBACK : INABILITY_FALLBACK;
-    }
-    appendMessage(user, 'assistant', response);
-    console.log(`AI Response (qwen): ${response}`);
-    return truncate(response);
-  } catch (error: any) {
-    console.error('Direct Qwen failed, using canned fallback:', error.message);
+    console.log(`User ${user} not in allowed list; no model path (strangers get canned replies only)`);
     const canned = cannedResponse(message);
-    // cannedResponse returns null when there is no canned match: never parrot
-    // the user's message back as an "I heard you say" echo. Tell the truth
-    // about the outage instead, with the endpoint so it can be debugged.
     if (canned !== null) {
       return canned;
     }
-    const msg =
-      'I cannot reach my language model right now ' +
-      `(${LLM_ENDPOINT} unreachable: ${error.message}). ` +
-      'Start the local model server and try again, or use /execute for shell commands.';
-    appendMessage(user, 'assistant', msg);
-    return msg;
+    return 'Not authorized.';
   }
+
+  // No dead-model fallback chain: when the opencode run fails, say so
+  // plainly instead of dropping to a local endpoint that is not running.
+  const msg =
+    agentFallback === 'incomplete'
+      ? 'I started on that but could not complete it just now. Try again in a bit, or send /execute <command> to run shell directly.'
+      : `My model run failed just now (${getOpencodeModelLabel()}${lastError ? `: ${lastError}` : ''}). Try again in a bit — this is usually a brief network blip, not a bot problem.`;
+  appendMessage(user, 'assistant', msg);
+  return msg;
 }
 
 setAiHandler(handleAiMessage);

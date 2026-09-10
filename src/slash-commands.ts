@@ -107,7 +107,7 @@ function stateSummary(): string {
   const s = getAgentState();
   return [
     `Name: ${s.name}`,
-    `Model: ${process.env.LLM_MODEL || 'qwen3.5-9b'}`,
+    `Model: ${(process.env.OPENCODE_MODEL || '').trim() || "opencode-config default"}`,
     `Activation: ${s.activation}`,
     `Fast: ${s.fast ? 'on' : 'off'}`,
     `Verbose: ${s.verbose ? 'on' : 'off'}`,
@@ -275,16 +275,22 @@ export function setupSlashCommands(): void {
 
   // --- model & config ---
   oc('model', async (_u, args) => {
-    const current = process.env.LLM_MODEL || 'qwen3.5-9b';
-    if (args.trim()) {
-      setAgentState({ model: args.trim() });
-      return `Model override set to '${args.trim()}' (used for the direct-Qwen fallback; opencode uses its own config).`;
+    const want = args.trim();
+    if (want.toLowerCase() === 'default') {
+      delete process.env.OPENCODE_MODEL;
+      return 'Model override cleared; runs inherit the opencode-config default.';
     }
-    return `Model: ${current}\nLLM endpoint: ${process.env.LLM_ENDPOINT || 'http://127.0.0.1:8095/v1/chat/completions'}\nAgentic engine: ${process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode'}`;
+    if (want) {
+      process.env.OPENCODE_MODEL = want;
+      return `Model switched to '${want}' (takes effect immediately, no restart). Clear with: /model default`;
+    }
+    const current = (process.env.OPENCODE_MODEL || '').trim() || "opencode-config default";
+    return `Model: ${current}\nAgentic engine: ${process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode'}`;
   });
   oc('models', async () => {
     const { model } = await readOpenCodeConfig();
-    return `Configured model: ${model || '(not set in opencode config)'}\nAvailable: qwen-local/qwen3.5-9b (llama.cpp on 127.0.0.1:8095)`;
+    const live = (process.env.OPENCODE_MODEL || '').trim();
+    return `Live model: ${live || '(OPENCODE_MODEL unset — inherits opencode config)'}\nConfigured model: ${model || '(not set in opencode config)'}`;
   });
   oc('config', async () => {
     const cfg = await readOpenCodeConfig();
@@ -487,20 +493,12 @@ async function exportLog(kind: string): Promise<string> {
 }
 
 async function diagnostics(): Promise<string> {
-  let llama = 'unreachable';
-  try {
-    const res = await fetch('http://127.0.0.1:8095/health', { signal: AbortSignal.timeout(3000) });
-    llama = res.ok ? (await res.text()).slice(0, 80) : `HTTP ${res.status}`;
-  } catch {
-    llama = 'unreachable';
-  }
   const s = getAgentState();
   return [
     `Bot PID: ${process.pid}`,
     `Uptime: ${Math.floor(process.uptime() / 60)}m ${Math.floor(process.uptime() % 60)}s`,
     `Node: ${process.version}`,
-    `LLM endpoint: ${process.env.LLM_ENDPOINT || 'http://127.0.0.1:8095'} — ${llama}`,
-    `Model: ${s.model || process.env.LLM_MODEL || 'qwen3.5-9b'}`,
+    `Model: ${(process.env.OPENCODE_MODEL || '').trim() || "opencode-config default"}`,
     `Agentic engine: ${process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode'}`,
     `Allowed users: ${ALLOWED.join(', ') || '(none)'}`,
     `Activation: ${s.activation}`,
