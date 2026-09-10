@@ -224,7 +224,13 @@ export async function startBot(): Promise<void> {
                 if (update.message) {
                   const chatId = update.message.chat.id;
                   setActiveChat(chatId);
-                  const text = update.message.text;
+                  // Non-text updates (photos, stickers, locations) carry no
+                  // text: answering them crashed the handler on
+                  // undefined.trim(). Skip quietly (offset already advanced).
+                  const text = update.message.text ?? '';
+                  if (!text) {
+                    continue;
+                  }
                   const username = update.message.from ? update.message.from.username : '';
                   const userId = update.message.from ? update.message.from.id.toString() : '';
 
