@@ -68,6 +68,19 @@ const opencodeSessionIds = new Map<string, string>();
 export function setOpencodeClient(client: unknown, directory?: string): void {
   opencodeClient = client;
   if (directory) opencodeDirectory = directory;
+  // The SDK session path cannot take a per-run --model flag: server-side
+  // sessions use the server's model. Say so loudly instead of silently
+  // ignoring OPENCODE_MODEL.
+  if (client && getOpencodeModel()) {
+    console.warn(
+      `OPENCODE_MODEL=${getOpencodeModel()} is set, but the in-process SDK path ` +
+        `ignores it (server sessions use the server model). Unset it to silence this.`,
+    );
+  }
+}
+
+export function resetOpencodeSessions(): void {
+  opencodeSessionIds.clear();
 }
 
 function buildSystemPrompt(): string {
@@ -141,6 +154,11 @@ async function runAgenticViaClient(message: string, user: string): Promise<strin
       throw new Error('opencode client session create returned no session id');
     }
     opencodeSessionIds.set(user, sessionId);
+    while (opencodeSessionIds.size > 50) {
+      const oldest = opencodeSessionIds.keys().next();
+      if (oldest.done) break;
+      opencodeSessionIds.delete(oldest.value);
+    }
   }
   try {
   const response = await Promise.race([

@@ -1,14 +1,13 @@
 # opencode-telegram-plugin
 
-Local Qwen-powered Telegram bot that executes terminal commands and file
-operations via opencode.
+Telegram bot that executes terminal commands and file operations via opencode.
 
 ## Architecture
 
-- **LLM Engine**: Local Qwen (via opencode)
+- **LLM Engine**: model from OPENCODE_MODEL env (e.g. Muse Spark via OpenCode Zen), else opencode-config default
 - **File Access**: user home directory (full access)
 - **Command Execution**: All terminal commands run through opencode
-- **No Cloud APIs**: 100% local processing
+- **Routing**: every plain-text message goes straight to the model (no regex front-gate); explicit slash commands dispatch through the command layer
 - **Runtime**: opencode plugin server contract (default export with `id` and
   `server`), plus a standalone bin for launchd deployments
 

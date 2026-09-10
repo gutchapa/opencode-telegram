@@ -17,6 +17,8 @@
         <string>123456:ABC...</string>
         <key>ALLOWED_TELEGRAM_USERS</key>
         <string>123456789</string>
+        <key>OPENCODE_MODEL</key>
+        <string>opencode/muse-spark-1.3-contributor-free</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

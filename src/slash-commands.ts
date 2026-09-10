@@ -8,7 +8,7 @@ import { readFile, readdir, writeFile } from 'fs/promises';
 import { registerPluginCommand, getRegisteredCommands } from './sdk/plugin-runtime';
 import { getAgentState, setAgentState } from './agent-state';
 import { clearHistory } from './conversation-memory';
-import { handleAiMessage } from './ai-handler';
+import { handleAiMessage, resetOpencodeSessions } from './ai-handler';
 import { runShell, truncate } from './shell';
 
 const CWD = process.env.OPENCODE_CWD || '/Users/gutchapa';
@@ -195,12 +195,14 @@ export function setupSlashCommands(): void {
   oc('new', async (user) => {
     setAgentState({ goal: '', steer: '' });
     clearHistory(user);
-    return 'New session started. Goal, steering and conversation history cleared.';
+    resetOpencodeSessions();
+    return 'New session started. Goal, steering, SDK sessions and conversation history cleared.';
   });
   oc('reset', async (user) => {
     setAgentState({ goal: '', steer: '' });
     clearHistory(user);
-    return 'Session reset. Goal, steering and conversation history cleared.';
+    resetOpencodeSessions();
+    return 'Session reset. Goal, steering, SDK sessions and conversation history cleared.';
   });
   oc('compact', async () =>
     'No persistent context to compact: each reply starts a fresh opencode session.',

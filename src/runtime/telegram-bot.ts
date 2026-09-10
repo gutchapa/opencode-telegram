@@ -9,6 +9,37 @@ import { basename } from 'path';
 let botStarted = false;
 let lastUpdateId = 0;
 
+// Persist the Telegram update offset so a restart does not re-fetch (and
+// re-answer) up to 24h of backed-up updates.
+import { join as joinPath } from 'path';
+import { existsSync as fsExists, mkdirSync as fsMkdir, readFileSync as fsRead, writeFileSync as fsWrite } from 'fs';
+
+function offsetFile(): string | null {
+  try {
+    const dir = joinPath(process.env.HOME || '/Users/gutchapa', '.opencode-telegram-state');
+    fsMkdir(dir, { recursive: true });
+    return joinPath(dir, 'last-update-id');
+  } catch {
+    return null;
+  }
+}
+const OFFSET_FILE = offsetFile();
+try {
+  if (OFFSET_FILE && fsExists(OFFSET_FILE)) {
+    const n = Number(fsRead(OFFSET_FILE, 'utf-8').trim());
+    if (Number.isFinite(n) && n >= 0) lastUpdateId = n;
+  }
+} catch {
+  /* start from 0 on any read failure */
+}
+function saveOffset(): void {
+  try {
+    if (OFFSET_FILE) fsWrite(OFFSET_FILE, String(lastUpdateId));
+  } catch {
+    /* offset persistence is best-effort */
+  }
+}
+
 function sendTelegramMessage(chatId: number, text: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const token = getBotToken();
@@ -218,6 +249,7 @@ export async function startBot(): Promise<void> {
               for (const update of response.result) {
                 console.log('Processing update:', JSON.stringify(update, null, 2));
                 lastUpdateId = Math.max(lastUpdateId, update.update_id);
+                saveOffset();
                 if (update.message) {
                   const chatId = update.message.chat.id;
                   setActiveChat(chatId);
