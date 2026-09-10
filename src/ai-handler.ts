@@ -54,7 +54,7 @@ const SHELL_FILLER = /^(me|the|a|an|us|out)$/i;
 const INSPECT_ABOUT_RE = /(?:^|\b)(?:wht|what|how)\s+about\s+([a-z0-9][a-z0-9._-]*)/i;
 const INSPECT_STATE_RE = /(?:^|\b)(?:check|see|verify|is|are)\s+(?:if\s+)?([a-z0-9][a-z0-9._-]*)\s+(?:is\s+|are\s+)?(?:installed|running|available|present)\b/i;
 const INSPECT_VERSION_RE = /(?:^|\b)(?:what|which)\s+version\s+of\s+([a-z0-9][a-z0-9._-]*)/i;
-const INSPECT_STOPWORDS = new Set(['the','this','that','these','those','it','its','my','your','our','their','his','her','a','an','me','us','them','you','we','i','he','she','there','here','now','all','any','some','do']);
+const INSPECT_STOPWORDS = new Set(['the','this','that','these','those','it','its','my','your','our','their','his','her','a','an','me','us','them','you','we','i','he','she','there','here','now','all','any','some','do','not','no','never','nt','is','are','was','were','be','been','being','does','did','has','have','had','can','could','should','would','will','shall','may','might','if','whether','or','and','but','of','for','on','in','at','to','llm','model','bot','telegram','opencode']);
 
 
 const TASK_RE = /\b(check\w*|install\w*|run\w*|execut\w*|show\b|list\b|find\w*|locat\w*|search\w*|fetch\w*|retriev\w*|creat\w*|mak\w*|build\w*|test\w*|anal\w*|writ\w*|read\w*|open\w*|updat\w*|remov\w*|delet\w*|copy\b|move\w*|download\w*|curl\b|clone\w*|start\w*|stop\w*|restart\w*|status\b|debug\w*|fix\w*|setup\b|config\w*|generat\w*|explain\w*)\b/i;

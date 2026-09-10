@@ -186,7 +186,15 @@ export async function startBot(): Promise<void> {
 
   console.log('Starting bot with token:', token.substring(0, 10) + '...');
 
+  // Guard against overlapping polls: a slow response must not trigger a
+  // second fetch of the same updates (duplicate replies).
+  let pollInFlight = false;
   const pollingInterval = setInterval(async () => {
+    if (pollInFlight) return;
+    pollInFlight = true;
+    const release = () => {
+      pollInFlight = false;
+    };
     try {
       const token = getBotToken();
       const path = `/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=5`;
@@ -206,6 +214,7 @@ export async function startBot(): Promise<void> {
           data += chunk;
         });
         res.on('end', () => {
+          release();
           try {
             const response = JSON.parse(data);
             if (response.ok && Array.isArray(response.result) && response.result.length > 0) {
@@ -239,7 +248,14 @@ export async function startBot(): Promise<void> {
                     clearInterval(typingInterval);
                     if (response) {
                       const trimmedResponse = response.trim();
-                      if (existsSync(trimmedResponse)) {
+                      // Auto-send files ONLY for allowed users: otherwise any
+                      // stranger whose reply happens to equal a file path would
+                      // pull arbitrary files off this Mac.
+                      const allowedUsers = (process.env.ALLOWED_TELEGRAM_USERS || '')
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      if (allowedUsers.includes(userId) && existsSync(trimmedResponse)) {
                         sendMediaToCurrentChat(trimmedResponse).catch((err: any) => {
                           console.error('Failed to auto-send media:', err.message);
                         });
@@ -263,11 +279,13 @@ export async function startBot(): Promise<void> {
       });
 
       req.on('error', (error: any) => {
+        release();
         console.error('Error fetching updates:', error.message);
       });
 
       req.end();
     } catch (error: any) {
+      release();
       console.error('Error in polling:', error.message);
     }
   }, 5000); // Poll every 5 seconds

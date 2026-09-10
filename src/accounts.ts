@@ -1,30 +1,27 @@
 import { registerPluginCommand, handleCommand } from './sdk/plugin-runtime';
 import { getBotToken } from './sdk/provider-auth';
 
+function isAllowed(user: string): boolean {
+  const allowed = (process.env.ALLOWED_TELEGRAM_USERS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return allowed.includes(user);
+}
+
 export function setupAccounts(): void {
   registerPluginCommand('*', 'setaccount', async (user, cmd, args) => {
-    const [username, newUsername] = args.split(' ');
-    if (!username || !newUsername) {
-      return 'Usage: /setaccount <username> <new_username>';
-    }
-    console.log(`Setting account ${username} to ${newUsername}`);
-    return `Account ${username} set to ${newUsername}`;
+    if (!isAllowed(user)) return 'Not authorized.';
+    return 'Account management is not implemented in this bot.';
   });
 
   registerPluginCommand('*', 'resetaccount', async (user, cmd, args) => {
-    const username = args.trim();
-    if (!username) {
-      return 'Usage: /resetaccount <username>';
-    }
-    console.log(`Resetting account ${username}`);
-    return `Account ${username} reset`;
+    if (!isAllowed(user)) return 'Not authorized.';
+    return 'Account management is not implemented in this bot.';
   });
 
   registerPluginCommand('*', 'listaccounts', async (user, cmd, args) => {
+    if (!isAllowed(user)) return 'Not authorized.';
     console.log('Listing accounts');
-    const model = process.env.LLM_MODEL || 'qwen3.5-9b';
-    const endpoint = process.env.LLM_ENDPOINT || 'http://127.0.0.1:8095/v1/chat/completions';
+    const model = process.env.OPENCODE_MODEL || 'opencode default';
     const opencodeBin = process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode';
-    return `Model: ${model}\nLLM endpoint: ${endpoint}\nAgentic engine: ${opencodeBin}`;
+    return `Model: ${model}\nAgentic engine: ${opencodeBin}`;
   });
 }

@@ -8,6 +8,9 @@ export interface HistoryEntry {
 
 const MAX_TURNS = 20;
 const MAX_TOTAL_CHARS = 16000;
+// Bound the number of tracked senders so strangers messaging the bot
+// cannot grow history.json without limit.
+const MAX_USERS = 50;
 
 const STATE_DIR = join(process.env.HOME || '/Users/gutchapa', '.opencode-telegram-state');
 const STATE_FILE = join(STATE_DIR, 'history.json');
@@ -54,6 +57,11 @@ export function appendMessage(user: string, role: HistoryEntry['role'], content:
     total -= (entries.shift() as HistoryEntry).content.length;
   }
   memory.set(user, entries);
+  while (memory.size > MAX_USERS) {
+    const oldest = memory.keys().next();
+    if (oldest.done) break;
+    memory.delete(oldest.value);
+  }
   persistMemory();
 }
 
