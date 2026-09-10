@@ -53,11 +53,8 @@ function sendTelegramMessage(chatId: number, text: string): Promise<void> {
 
 // --- Media sending support ---
 let activeChatId: number | null = null;
-export function setActiveChat(chatId: number): void {
+function setActiveChat(chatId: number): void {
   activeChatId = chatId;
-}
-export function getActiveChat(): number | null {
-  return activeChatId;
 }
 
 function inferMediaKind(filePath: string): 'photo' | 'video' | 'document' {
@@ -314,13 +311,4 @@ export async function startBot(): Promise<void> {
   });
 }
 
-export function stopBot(): void {
-  if (botStarted) {
-    console.log('Stopping bot...');
-    botStarted = false;
-  }
-}
 
-export function isBotStarted(): boolean {
-  return botStarted;
-}

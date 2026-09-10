@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import { registerPluginCommand } from './sdk/plugin-runtime';
 import { existsSync } from 'fs';
 import { sendMediaToCurrentChat } from './runtime/telegram-bot';
+import { truncate } from './shell';
 
 const execFileAsync = promisify(execFile);
 
@@ -17,10 +18,6 @@ const HOME = process.env.HOME || '/Users/gutchapa';
 
 function isAllowed(user: string): boolean {
   return ALLOWED_USERS.includes(user);
-}
-
-function truncate(text: string, max = 4000): string {
-  return text.length > max ? text.slice(0, max) + '\n\n…(truncated)' : text;
 }
 
 function resolvePath(p: string): string {

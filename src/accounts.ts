@@ -1,4 +1,4 @@
-import { registerPluginCommand, handleCommand } from './sdk/plugin-runtime';
+import { registerPluginCommand } from './sdk/plugin-runtime';
 import { getBotToken } from './sdk/provider-auth';
 
 function isAllowed(user: string): boolean {

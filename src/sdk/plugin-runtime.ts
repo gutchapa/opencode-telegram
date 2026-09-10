@@ -1,14 +1,9 @@
 let pluginCommands: Map<string, { user: string; command: string; handler: (user: string, cmd: string, args: string) => Promise<string | null> }> = new Map();
-let pluginInteractiveHandlers: Map<string, { user: string; command: string; handler: (user: string, cmd: string, args: string) => Promise<string | null> }> = new Map();
 let aiHandler: ((user: string, message: string) => Promise<string | null>) | null = null;
 
 export function registerPluginCommand(user: string, command: string, handler: (user: string, cmd: string, args: string) => Promise<string | null>): void {
   console.log(`Registering command: ${command} (user: ${user})`);
   pluginCommands.set(command.toLowerCase(), { user, command, handler });
-}
-
-export function registerPluginInteractiveHandler(user: string, command: string, handler: (user: string, cmd: string, args: string) => Promise<string | null>): void {
-  pluginInteractiveHandlers.set(command.toLowerCase(), { user, command, handler });
 }
 
 export function setAiHandler(handler: (user: string, message: string) => Promise<string | null>): void {
@@ -52,19 +47,6 @@ export async function handleCommand(user: string, username: string, command: str
     }
   }
 
-  const resolvedInteractive = pluginInteractiveHandlers.get(cmdName)
-    ? cmdName
-    : (pluginInteractiveHandlers.get(cmdName.replace(/_/g, '-')) ? cmdName.replace(/_/g, '-') : cmdName);
-  const interactiveEntry = pluginInteractiveHandlers.get(resolvedInteractive);
-  if (interactiveEntry && (interactiveEntry.user === '*' || interactiveEntry.user === user)) {
-    try {
-      return await interactiveEntry.handler(user, resolvedInteractive, args);
-    } catch (error) {
-      console.error('Error executing interactive command:', error);
-      return null;
-    }
-  }
-
   if (aiHandler) {
     console.log('Falling back to AI handler for:', command);
     return await aiHandler(user, command);
@@ -76,20 +58,4 @@ export function getRegisteredCommands(): Map<string, { user: string; command: st
   return pluginCommands;
 }
 
-export function getRegisteredInteractiveHandlers(): Map<string, { user: string; command: string; handler: (user: string, cmd: string, args: string) => Promise<string | null> }> {
-  return pluginInteractiveHandlers;
-}
 
-export function executePluginCommand(user: string, command: string, args: string): Promise<string | null> {
-  return handleCommand(user, '', command);
-}
-
-export function matchPluginCommand(command: string): string | null {
-  let cmd = command.trim().toLowerCase();
-  if (cmd.startsWith('/')) {
-    cmd = cmd.substring(1);
-  }
-  if (pluginCommands.get(cmd)) return cmd;
-  const hyphenated = cmd.replace(/_/g, '-');
-  return pluginCommands.get(hyphenated) ? hyphenated : null;
-}

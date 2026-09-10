@@ -1,4 +1,4 @@
-import { registerPluginCommand, handleCommand } from './sdk/plugin-runtime';
+import { registerPluginCommand } from './sdk/plugin-runtime';
 
 export function setupChannel(): void {
   registerPluginCommand('*', 'setchannel', async (user, cmd, args) => {

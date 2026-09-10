@@ -15,7 +15,6 @@ export interface AgentState {
   prose: boolean;
   goal: string;
   steer: string;
-  model: string; // override for the direct-Qwen fallback; empty = use env
   name: string;
 }
 
@@ -32,7 +31,6 @@ const state: AgentState = {
   prose: false,
   goal: '',
   steer: '',
-  model: '',
   name: 'opencode-bot',
 };
 
