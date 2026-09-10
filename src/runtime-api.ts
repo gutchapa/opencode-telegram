@@ -9,7 +9,11 @@ export async function setupRuntimeApi(): Promise<void> {
 
   registerPluginCommand('*', 'start', async (user, cmd, args) => {
     console.log('Starting bot');
-    return 'Bot started successfully!';
+    return (
+      "I'm opencode, a private Telegram bot. I answer my owner's messages; " +
+      'everyone else gets command help only.\n' +
+      'Try /help to see what works here.'
+    );
   });
 }
 

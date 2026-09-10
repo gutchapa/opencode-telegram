@@ -40,6 +40,52 @@ function saveOffset(): void {
   }
 }
 
+function isAllowedUser(userId: string): boolean {
+  const allowed = (process.env.ALLOWED_TELEGRAM_USERS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return allowed.includes(userId);
+}
+
+// Voice notes, audio files, video notes, captioned photos and documents
+// arrive without message.text. Transcribe or describe them into text so the
+// normal command/AI flow can handle them. Returns '' when there is nothing
+// answerable (strangers' media is skipped silently to avoid CPU abuse).
+async function resolveNonTextMessage(msg: any, userId: string, chatId: number): Promise<string> {
+  const voice = msg.voice || msg.audio || msg.video_note;
+  if (voice?.file_id) {
+    if (!isAllowedUser(userId)) {
+      return '';
+    }
+    sendChatAction(chatId, 'typing').catch(() => {});
+    try {
+      const { transcribeVoice } = await import('../voice');
+      const transcript = await transcribeVoice({ fileId: voice.file_id, duration: voice.duration });
+      console.log(`Voice transcribed (${transcript.length} chars)`);
+      return transcript;
+    } catch (e: any) {
+      console.error('Voice transcription failed:', e.message);
+      await sendTelegramMessage(chatId, `Couldn't transcribe that voice note: ${e.message}`).catch(() => {});
+      return '';
+    }
+  }
+  if (msg.caption) {
+    return msg.caption;
+  }
+  if (msg.photo || msg.document || msg.location || msg.sticker) {
+    if (!isAllowedUser(userId)) {
+      return '';
+    }
+    await sendTelegramMessage(
+      chatId,
+      'I can read text, captions and voice notes — but not bare photos, files or locations yet. Add a caption or send a voice note.',
+    ).catch(() => {});
+    return '';
+  }
+  return '';
+}
+
 function sendTelegramMessage(chatId: number, text: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const token = getBotToken();
@@ -241,7 +287,7 @@ export async function startBot(): Promise<void> {
         res.on('data', (chunk) => {
           data += chunk;
         });
-        res.on('end', () => {
+        res.on('end', async () => {
           release();
           try {
             const response = JSON.parse(data);
@@ -253,15 +299,15 @@ export async function startBot(): Promise<void> {
                 if (update.message) {
                   const chatId = update.message.chat.id;
                   setActiveChat(chatId);
-                  // Non-text updates (photos, stickers, locations) carry no
-                  // text: answering them crashed the handler on
-                  // undefined.trim(). Skip quietly (offset already advanced).
-                  const text = update.message.text ?? '';
-                  if (!text) {
-                    continue;
-                  }
                   const username = update.message.from ? update.message.from.username : '';
                   const userId = update.message.from ? update.message.from.id.toString() : '';
+                  let text = update.message.text ?? '';
+                  if (!text) {
+                    text = await resolveNonTextMessage(update.message, userId, chatId);
+                    if (!text) {
+                      continue;
+                    }
+                  }
 
                   console.log('Received message from:', username, 'ID:', userId, 'Text:', text);
 
@@ -286,11 +332,7 @@ export async function startBot(): Promise<void> {
                       // Auto-send files ONLY for allowed users: otherwise any
                       // stranger whose reply happens to equal a file path would
                       // pull arbitrary files off this Mac.
-                      const allowedUsers = (process.env.ALLOWED_TELEGRAM_USERS || '')
-                        .split(',')
-                        .map((s) => s.trim())
-                        .filter(Boolean);
-                      if (allowedUsers.includes(userId) && existsSync(trimmedResponse)) {
+                      if (isAllowedUser(userId) && existsSync(trimmedResponse)) {
                         sendMediaToCurrentChat(trimmedResponse).catch((err: any) => {
                           console.error('Failed to auto-send media:', err.message);
                         });

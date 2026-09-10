@@ -29,6 +29,11 @@ setupSlashCommands();
   await t('stranger unknown refused', await handleCommand('999', 'x', 'answer me'), 'Not authorized.');
   await t('owner listallow works', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/listallow'), 'Allowed Telegram users: REDACTED_TELEGRAM_ID');
   await t('owner execute works', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/execute echo HI'), 'HI');
+  const { parseTranscript } = require('../dist/voice.js');
+  await t('transcript segments parsed',
+    parseTranscript('[00:00:00.000 --> 00:00:02.000]  hello world\nwhisper_print_timings: total time = 1ms\n'),
+    'hello world');
+  await t('transcript empty on noise only', parseTranscript('ggml init\nwhisper_print_timings: x\n'), '');
   console.log('smoke: all passed');
 })().catch((e) => {
   console.error('smoke FAILED:', e.message);

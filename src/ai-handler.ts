@@ -288,8 +288,25 @@ export async function handleAiMessage(user: string, message: string): Promise<st
         ? `${transcript}\n\nContinue the conversation. Respond to the user's latest message.`
         : message;
       const agentPrompt = [prelude, transcriptPrompt].filter(Boolean).join('\n\n');
-      const queued = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message, prelude));
-      agenticQueue = queued.then(() => null, () => null);
+      // One retry on network-class failures (Tailscale/DNS blips): a brief
+      // outage should not instantly become a user-visible failure. Retry
+      // once after 10s; anything else fails fast to the honest error below.
+      const NETWORK_RE = /timed out|fetch failed|EAI_AGAIN|ECONNRESET|ETIMEDOUT|EADDRNOTAVAIL|ENOTFOUND|network/i;
+      const runOnce = () => {
+        const q = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message, prelude));
+        agenticQueue = q.then(() => null, () => null);
+        return q;
+      };
+      const queued = (async () => {
+        try {
+          return await runOnce();
+        } catch (e: any) {
+          if (!NETWORK_RE.test(e.message || '')) throw e;
+          console.error('opencode run hit a network blip; retrying once in 10s:', e.message);
+          await new Promise((r) => setTimeout(r, 10000));
+          return await runOnce();
+        }
+      })();
       try {
         let agentic = await queued;
         if (isUnfulfilledPromise(agentic)) {
