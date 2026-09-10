@@ -211,7 +211,7 @@ function buildSystemPrompt(): string {
   );
 }
 
-function cannedResponse(message: string): string {
+function cannedResponse(message: string): string | null {
   const responses: Record<string, string> = {
     hello: 'Hello! I\'m your opencode bot. I can help you with various tasks.',
     hi: 'Hi there! How can I assist you?',
@@ -225,7 +225,9 @@ function cannedResponse(message: string): string {
       return val;
     }
   }
-  return 'I heard you say: ' + message + '. How can I help you with that?';
+  // No canned match: return null so the caller reports the real outage
+  // instead of parroting the user's message back as an echo.
+  return null;
 }
 
 function cleanFences(text: string): string {
@@ -536,8 +538,19 @@ export async function handleAiMessage(user: string, message: string): Promise<st
     return truncate(response);
   } catch (error: any) {
     console.error('Direct Qwen failed, using canned fallback:', error.message);
-    const fallback = cannedResponse(message);
-    return fallback;
+    const canned = cannedResponse(message);
+    // cannedResponse returns null when there is no canned match: never parrot
+    // the user's message back as an "I heard you say" echo. Tell the truth
+    // about the outage instead, with the endpoint so it can be debugged.
+    if (canned !== null) {
+      return canned;
+    }
+    const msg =
+      'I cannot reach my language model right now ' +
+      `(${LLM_ENDPOINT} unreachable: ${error.message}). ` +
+      'Start the local model server and try again, or use /execute for shell commands.';
+    appendMessage(user, 'assistant', msg);
+    return msg;
   }
 }
 
