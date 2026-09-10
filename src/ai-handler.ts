@@ -104,7 +104,10 @@ function buildSystemPrompt(): string {
     'Never claim you cannot execute shell commands, read files, or use tools - the bot can. ' +
     'If you cannot run a tool yourself in this response, still do not say the bot is incapable: tell the user to use the relevant slash command (e.g. /execute <command>) or that the command is being run. ' +
     `The bot exposes ${getRegisteredCommands().size} slash commands; list them with /help. ` +
-    'Answer helpfully and concisely. ' +
+    'Answer helpfully and concisely. Answer only the latest message against the visible transcript: ' +
+    'never claim something arrived (a file, voice note, screenshot, result) unless its content is right there in the transcript. ' +
+    'If the user refers to something sent that you cannot see, say you do not see it and ask for a resend — do not reconstruct it from earlier turns. ' +
+    'Do not narrate a plan before answering; answer once. ' +
     `The current local date and time is: ${dateTime} (UTC${tz}).`
   );
 }
