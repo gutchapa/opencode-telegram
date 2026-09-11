@@ -10,7 +10,9 @@ export function truncate(text: string, max = 4000): string {
 
 export async function runShell(cmd: string): Promise<string> {
   if (!cmd.trim()) return 'Usage: /exec <command>';
-  const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', cmd], {
+  // 'sh' via PATH (not a hardcoded /bin/sh): some CI images and
+  // minimal containers lack /bin/sh while sh resolves fine.
+  const { stdout, stderr } = await execFileAsync('sh', ['-c', cmd], {
     cwd: CWD,
     timeout: 60000,
     maxBuffer: 8 * 1024 * 1024,

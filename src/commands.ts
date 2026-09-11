@@ -51,7 +51,9 @@ export function setupCommands(): void {
     const command = args.trim();
     if (!command) return 'Usage: /execute <shell command>';
     try {
-      const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', command], {
+      // 'sh' via PATH (not a hardcoded /bin/sh): some CI images and
+      // minimal containers lack /bin/sh while sh resolves fine.
+      const { stdout, stderr } = await execFileAsync('sh', ['-c', command], {
         cwd: CWD,
         timeout: 60000,
         maxBuffer: 8 * 1024 * 1024,
