@@ -16,6 +16,29 @@ const FITMENT_CONTEXT =
   process.env.DIGEST_CONTEXT ||
   'Mac user running opencode; cost-sensitive; prefers free/open tools; plain office/doc work; no enterprise needs.';
 
+function digestHome(): string {
+  return process.env.DIGEST_HOME || join(process.env.HOME || '/Users/gutchapa', '.config/github-digest');
+}
+
+// Deployed manifest: the running memory of the stable setup, shared with
+// the standalone wrapper. Read for fitment; the model may append
+// newly-verified stable items (additions only) via the prompt rule below.
+function readManifest(): string {
+  try {
+    const p = join(digestHome(), 'deployed.json');
+    if (!existsSync(p)) return '(manifest empty)';
+    const d = JSON.parse(readFileSync(p, 'utf-8'));
+    const items = (d.items || []).map((i: any) => `- ${i.name} — ${i.note || ''}`);
+    return items.length ? items.join('\n') : '(manifest empty)';
+  } catch {
+    return '(manifest unreadable)';
+  }
+}
+
+function manifestPath(): string {
+  return join(digestHome(), 'deployed.json');
+}
+
 export function isDigestEnabled(): boolean {
   const v = (process.env.DIGEST_ENABLED || '1').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'on' || v === 'yes';
@@ -106,6 +129,7 @@ function previousBriefings(): string {
 }
 
 function buildPrompt(dateStr: string, raw: { radar: string; tracked: string; gh1: string; gh2: string }, previous: string): string {
+  const manifest = readManifest();
   return `Generate the daily AI Morning Briefing and output ONLY the briefing text (no preamble, no commentary).
 PART 1 — DIGEST (keep this exact format):
 🌅 AI Morning Briefing — ${dateStr}
@@ -114,7 +138,10 @@ PART 1 — DIGEST (keep this exact format):
 DEDUPE: skip any repo already listed in the PREVIOUS BRIEFINGS section — do not re-list repeats.
 PART 2 — FITMENT (mandatory final section):
 Assess EVERY news item and EVERY repo against this context: ${FITMENT_CONTEXT}
-ALREADY DEPLOYED — DO NOT SUGGEST (mark already have, never recommend installing): opencode + free-tier models, Tailscale if present.
+ALREADY DEPLOYED — DO NOT SUGGEST (mark already have, never recommend installing).
+Authoritative list, verified across runs:
+${manifest}
+Learning rule: if your live shell checks confirm a stable setup item (installed app, brew package, running service, configured tool) missing above, append it with: python3 -c "import json; p='${manifestPath()}'; d=json.load(open(p)); d['items'].append({'name':'<name>','note':'<one line>','added':'<today YYYY-MM-DD>','by':'briefing'}); json.dump(d,open(p,'w'),indent=2)". Additions only — never remove or edit existing entries.
 For each item: useful (one line: why + what to do) or skip (one line: reason — 'duplicate of what you run', 'paid plan', 'not our use case', 'news only', 'already have').
 End with a one-line bottom line: what to install/change today (usually 'nothing').
 Verification rule: every installed / already-have / duplicate verdict must be backed by a live shell check you ran in THIS run (ls, which, brew list, mdfind). If a check is denied or tools are unavailable, mark that verdict unverified instead of guessing — never assert installation state you did not observe.
