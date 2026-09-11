@@ -117,6 +117,7 @@ Assess EVERY news item and EVERY repo against this context: ${FITMENT_CONTEXT}
 ALREADY DEPLOYED — DO NOT SUGGEST (mark already have, never recommend installing): opencode + free-tier models, Tailscale if present.
 For each item: useful (one line: why + what to do) or skip (one line: reason — 'duplicate of what you run', 'paid plan', 'not our use case', 'news only', 'already have').
 End with a one-line bottom line: what to install/change today (usually 'nothing').
+Verification rule: every installed / already-have / duplicate verdict must be backed by a live shell check you ran in THIS run (ls, which, brew list, mdfind). If a check is denied or tools are unavailable, mark that verdict unverified instead of guessing — never assert installation state you did not observe.
 Keep the section tight — bullets, no essays. Plain text only: NO Markdown formatting (no asterisks, underscores, backticks, hashes, brackets) — the transport rejects it.
 
 RAW RADAR:
