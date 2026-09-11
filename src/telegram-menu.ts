@@ -23,6 +23,7 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   context: 'Show context info',
   debug: 'Bot + LLM health check',
   diagnostics: 'Bot diagnostics',
+  digest: 'Daily briefing now (on/off/status)',
   'dock-telegram': 'Telegram bot status',
   elev: 'Elevated mode on',
   elevated: 'Elevated mode toggle',

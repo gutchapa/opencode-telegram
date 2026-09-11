@@ -133,6 +133,12 @@ let activeChatId: number | null = null;
 function setActiveChat(chatId: number): void {
   activeChatId = chatId;
 }
+export function getActiveChat(): number | null {
+  return activeChatId;
+}
+export function sendTextToChat(chatId: number, text: string): Promise<void> {
+  return sendTelegramMessage(chatId, text);
+}
 
 function inferMediaKind(filePath: string): 'photo' | 'video' | 'document' {
   const ext = filePath.split('.').pop()?.toLowerCase() || '';

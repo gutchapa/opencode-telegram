@@ -195,7 +195,7 @@ async function runAgenticViaClient(message: string, user: string): Promise<strin
   }
 }
 
-async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessage: string, prelude = ''): Promise<string> {
+export async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessage: string, prelude = ''): Promise<string> {
   if (opencodeClient) {
     // The SDK session keeps its own history, so send the latest message plus
     // the current goal/steer/focus prelude (no transcript duplication).

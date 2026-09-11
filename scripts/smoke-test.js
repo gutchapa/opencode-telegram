@@ -34,6 +34,12 @@ setupSlashCommands();
     parseTranscript('[00:00:00.000 --> 00:00:02.000]  hello world\nwhisper_print_timings: total time = 1ms\n'),
     'hello world');
   await t('transcript empty on noise only', parseTranscript('ggml init\nwhisper_print_timings: x\n'), '');
+  await t('digest status', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/digest status'), 'Daily digest: ON.');
+  await t('digest off', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/digest off'),
+    'Daily digest disabled for this process (persist via DIGEST_ENABLED=0 in the plist).');
+  await t('digest status off', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/digest status'), 'Daily digest: OFF.');
+  await t('digest on', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/digest on'), 'Daily digest enabled.');
+  await t('stranger digest refused', await handleCommand('999', 'x', '/digest status'), 'Not authorized.');
   console.log('smoke: all passed');
 })().catch((e) => {
   console.error('smoke FAILED:', e.message);

@@ -429,6 +429,30 @@ export function setupSlashCommands(): void {
   oc('debug', async () => diagnostics());
   oc('diagnostics', async () => diagnostics());
 
+  // --- daily digest (bundled surprise; disable with DIGEST_ENABLED=0) ---
+  oc('digest', async (_u, args) => {
+    const { runDailyDigest, isDigestEnabled, setDigestEnabled } = await import('./digest');
+    const { getActiveChat } = await import('./runtime/telegram-bot');
+    const sub = args.trim().toLowerCase();
+    if (sub === 'off') {
+      setDigestEnabled(false);
+      return 'Daily digest disabled for this process (persist via DIGEST_ENABLED=0 in the plist).';
+    }
+    if (sub === 'on') {
+      setDigestEnabled(true);
+      return 'Daily digest enabled.';
+    }
+    if (sub === 'status') {
+      return `Daily digest: ${isDigestEnabled() ? 'ON' : 'OFF'}.`;
+    }
+    const chatId = Number(process.env.DIGEST_CHAT_ID) || getActiveChat();
+    if (!chatId) {
+      return 'No chat target for the digest yet — send any message first, then /digest again.';
+    }
+    await runDailyDigest(chatId);
+    return 'Digest sent.';
+  });
+
   // --- bot ops ---
   oc('bot-ping', async () => 'pong');
   oc('bot-version', async () => {

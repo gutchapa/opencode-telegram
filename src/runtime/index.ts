@@ -1,5 +1,6 @@
 import { getBotToken, initializeBotToken, resolveBotToken } from '../sdk/provider-auth';
-import { startBot } from './telegram-bot';
+import { startBot, getActiveChat } from './telegram-bot';
+import { startDigestScheduler, isDigestEnabled } from '../digest';
 import { setupAccounts } from '../accounts';
 import { setupAllowFrom } from '../allow-from';
 import { setupApi } from '../api';
@@ -41,6 +42,7 @@ export async function initialize(): Promise<void> {
   console.log('Setting up plugin commands...');
   
   startBot();
+  startDigestScheduler(() => getActiveChat());
 
-  console.log('opencode initialized');
+  console.log(`opencode initialized (digest enabled=${isDigestEnabled()})`);
 }
