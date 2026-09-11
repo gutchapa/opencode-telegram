@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import { registerPluginCommand } from './sdk/plugin-runtime';
 import { existsSync } from 'fs';
 import { sendMediaToCurrentChat } from './runtime/telegram-bot';
-import { truncate, resolveShell } from './shell';
+import { truncate, resolveShell, resolveCwd } from './shell';
 
 const execFileAsync = promisify(execFile);
 
@@ -52,7 +52,7 @@ export function setupCommands(): void {
     if (!command) return 'Usage: /execute <shell command>';
     try {
       const { stdout, stderr } = await execFileAsync(resolveShell(), ['-c', command], {
-        cwd: CWD,
+        cwd: resolveCwd(),
         timeout: 60000,
         maxBuffer: 8 * 1024 * 1024,
       });
@@ -87,7 +87,7 @@ export function setupCommands(): void {
       const { stdout } = await execFileAsync(
         'grep',
         ['-rnI', '--exclude-dir=node_modules', '--exclude-dir=.git', pattern, target],
-        { cwd: CWD, timeout: 30000, maxBuffer: 8 * 1024 * 1024 },
+        { cwd: resolveCwd(), timeout: 30000, maxBuffer: 8 * 1024 * 1024 },
       );
       const lines = stdout.trim().split('\n').slice(0, 40).join('\n');
       return truncate(lines || '(no matches)');
