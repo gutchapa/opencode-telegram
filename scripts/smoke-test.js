@@ -1,9 +1,11 @@
 // Smoke test: auth gates + no-echo fallback. No model calls, no network
 // (stranger unknown-command path returns canned/Not authorized without LLM).
-// Run: ALLOWED_TELEGRAM_USERS=REDACTED_TELEGRAM_ID node scripts/smoke-test.js
+// Run: SMOKE_OWNER_ID=123456789 node scripts/smoke-test.js
+// Fixture ID only — never a real user ID. Must match ALLOWED below.
 const assert = require('assert');
 
-process.env.ALLOWED_TELEGRAM_USERS = process.env.ALLOWED_TELEGRAM_USERS || 'REDACTED_TELEGRAM_ID';
+const OWNER = process.env.SMOKE_OWNER_ID || '123456789';
+process.env.ALLOWED_TELEGRAM_USERS = process.env.ALLOWED_TELEGRAM_USERS || OWNER;
 
 const { setupCommands } = require('../dist/commands.js');
 const { setupAllowFrom } = require('../dist/allow-from.js');
@@ -27,18 +29,18 @@ setupSlashCommands();
   await t('stranger listaccounts refused', await handleCommand('999', 'x', '/listaccounts'), 'Not authorized.');
   await t('stranger setaccount refused', await handleCommand('999', 'x', '/setaccount a b'), 'Not authorized.');
   await t('stranger unknown refused', await handleCommand('999', 'x', 'answer me'), 'Not authorized.');
-  await t('owner listallow works', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/listallow'), 'Allowed Telegram users: REDACTED_TELEGRAM_ID');
-  await t('owner execute works', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/execute echo HI'), 'HI');
+  await t('owner listallow works', await handleCommand(OWNER, 'x', '/listallow'), 'Allowed Telegram users: ' + OWNER);
+  await t('owner execute works', await handleCommand(OWNER, 'x', '/execute echo HI'), 'HI');
   const { parseTranscript } = require('../dist/voice.js');
   await t('transcript segments parsed',
     parseTranscript('[00:00:00.000 --> 00:00:02.000]  hello world\nwhisper_print_timings: total time = 1ms\n'),
     'hello world');
   await t('transcript empty on noise only', parseTranscript('ggml init\nwhisper_print_timings: x\n'), '');
-  await t('digest status', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/digest status'), 'Daily digest: ON.');
-  await t('digest off', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/digest off'),
+  await t('digest status', await handleCommand(OWNER, 'x', '/digest status'), 'Daily digest: ON.');
+  await t('digest off', await handleCommand(OWNER, 'x', '/digest off'),
     'Daily digest disabled for this process (persist via DIGEST_ENABLED=0 in the plist).');
-  await t('digest status off', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/digest status'), 'Daily digest: OFF.');
-  await t('digest on', await handleCommand('REDACTED_TELEGRAM_ID', 'x', '/digest on'), 'Daily digest enabled.');
+  await t('digest status off', await handleCommand(OWNER, 'x', '/digest status'), 'Daily digest: OFF.');
+  await t('digest on', await handleCommand(OWNER, 'x', '/digest on'), 'Daily digest enabled.');
   await t('stranger digest refused', await handleCommand('999', 'x', '/digest status'), 'Not authorized.');
   console.log('smoke: all passed');
 })().catch((e) => {

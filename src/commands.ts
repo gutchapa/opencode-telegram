@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import { registerPluginCommand } from './sdk/plugin-runtime';
 import { existsSync } from 'fs';
 import { sendMediaToCurrentChat } from './runtime/telegram-bot';
-import { truncate } from './shell';
+import { truncate, resolveShell } from './shell';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,9 +51,7 @@ export function setupCommands(): void {
     const command = args.trim();
     if (!command) return 'Usage: /execute <shell command>';
     try {
-      // 'sh' via PATH (not a hardcoded /bin/sh): some CI images and
-      // minimal containers lack /bin/sh while sh resolves fine.
-      const { stdout, stderr } = await execFileAsync('sh', ['-c', command], {
+      const { stdout, stderr } = await execFileAsync(resolveShell(), ['-c', command], {
         cwd: CWD,
         timeout: 60000,
         maxBuffer: 8 * 1024 * 1024,
