@@ -20,6 +20,10 @@ setupAccounts();
 setupSlashCommands();
 
 (async () => {
+  const fs = require('fs');
+  const { resolveShell } = require('../dist/shell.js');
+  const picked = resolveShell();
+  console.log(`shell diagnosis: picked=${picked} existsBinSh=${fs.existsSync('/bin/sh')} existsUsrBinSh=${fs.existsSync('/usr/bin/sh')} PATH=${process.env.PATH}`);
   const t = async (name, actual, want) => {
     assert.strictEqual(actual, want, `${name}: got ${JSON.stringify(actual)}`);
     console.log(`ok - ${name}`);
