@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { setAiHandler, getRegisteredCommands } from './sdk/plugin-runtime';
 import { getAgentState } from './agent-state';
 import { appendMessage, getHistory, formatTranscript, HistoryEntry } from './conversation-memory';
@@ -31,6 +31,49 @@ const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '')
   .filter(Boolean);
 
 let agenticQueue: Promise<string | null> = Promise.resolve(null);
+// Live run tracking so /stop actually stops: the in-flight child plus a
+// count of queued-but-unstarted runs.
+let currentChild: ChildProcess | null = null;
+let queuedRuns = 0;
+
+let runGeneration = 0;
+
+export function stopAgenticRuns(): string {
+  let stopped = 0;
+  if (currentChild) {
+    try {
+      currentChild.kill('SIGKILL');
+      stopped += 1;
+    } catch { /* already dead */ }
+    currentChild = null;
+  }
+  stopped += queuedRuns;
+  queuedRuns = 0;
+  // Invalidate the chain: already-attached closures check the generation at
+  // start and abort instead of running. Resetting the variable alone would
+  // NOT detach them.
+  runGeneration += 1;
+  agenticQueue = Promise.resolve(null);
+  return stopped === 0
+    ? 'Nothing running — no pending agentic runs.'
+    : `Stopped ${stopped} pending agentic run${stopped === 1 ? '' : 's'}.`;
+}
+
+// Enqueue an opencode run behind the serial chain, counted for /stop and
+// invalidated by generation bumps.
+function enqueueRun(fn: () => Promise<string>): Promise<string> {
+  queuedRuns += 1;
+  const gen = runGeneration;
+  const q = agenticQueue.then(() => {
+    queuedRuns -= 1;
+    if (gen !== runGeneration) {
+      throw new Error('run cancelled by /stop');
+    }
+    return fn();
+  });
+  agenticQueue = q.then(() => null, () => null);
+  return q;
+}
 
 // NOTE: an earlier version of this file contained a regex front-gate
 // (SHELL_COMMANDS / INSPECT_* / extractShellCommand) that guessed shell
@@ -213,6 +256,7 @@ export async function runOpencodeAgentic(fullPrompt: string, user: string, lates
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, NO_COLOR: '1' },
   });
+  currentChild = child;
 
   let stdout = '';
   let stderr = '';
@@ -241,7 +285,11 @@ export async function runOpencodeAgentic(fullPrompt: string, user: string, lates
     });
   });
 
-  await Promise.race([exited, timeout]);
+  try {
+    await Promise.race([exited, timeout]);
+  } finally {
+    if (currentChild === child) currentChild = null;
+  }
 
   const text = cleanFences(stdout.replace(/\x1b\[[0-9;]*m/g, ''));
   if (!text) {
@@ -295,11 +343,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
       // outage should not instantly become a user-visible failure. Retry
       // once after 10s; anything else fails fast to the honest error below.
       const NETWORK_RE = /timed out|fetch failed|EAI_AGAIN|ECONNRESET|ETIMEDOUT|EADDRNOTAVAIL|ENOTFOUND|network/i;
-      const runOnce = () => {
-        const q = agenticQueue.then(() => runOpencodeAgentic(agentPrompt, user, message, prelude));
-        agenticQueue = q.then(() => null, () => null);
-        return q;
-      };
+      const runOnce = () => enqueueRun(() => runOpencodeAgentic(agentPrompt, user, message, prelude));
       const queued = (async () => {
         try {
           return await runOnce();
@@ -315,9 +359,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
         if (isUnfulfilledPromise(agentic)) {
           console.error('Agent response is intent-only; retrying with hardening nudge.');
           const hardened = agentPrompt + '\n\n' + AGENT_HARDENING_INSTRUCTION + '\n' + RETRY_NUDGE;
-          const retried = agenticQueue.then(() => runOpencodeAgentic(hardened, user, message, prelude));
-          agenticQueue = retried.then(() => null, () => null);
-          agentic = await retried;
+          agentic = await enqueueRun(() => runOpencodeAgentic(hardened, user, message, prelude));
         }
         if (isUnfulfilledPromise(agentic)) {
           console.error('Agent still intent-only after retry; reporting failure honestly.');

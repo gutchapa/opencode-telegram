@@ -207,10 +207,14 @@ export function setupSlashCommands(): void {
   oc('compact', async () =>
     'No persistent context to compact: each reply starts a fresh opencode session.',
   );
-  oc('restart', async () =>
-    'Restart acknowledged. Agentic state cleared; launchd keeps the bot alive.',
-  );
-  oc('stop', async () => 'Stopped. Pending agentic runs dropped.');
+  oc('restart', async () => {
+    setTimeout(() => process.exit(0), 500);
+    return 'Restarting bot process now; launchd brings it back in seconds.';
+  });
+  oc('stop', async () => {
+    const { stopAgenticRuns } = await import('./ai-handler');
+    return stopAgenticRuns();
+  });
   oc('status', async () => stateSummary());
   oc('id', async (user) => `Telegram user id: ${user}\nSession: per-user conversation memory (cleared by /new)`);
   oc('whoami', async (user) => {
