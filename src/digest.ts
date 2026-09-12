@@ -70,6 +70,30 @@ function markRun(): void {
   } catch { /* ignore */ }
 }
 
+function claimFile(day = todayStr()): string {
+  return join(STATE_DIR, `digest-claim-${day}`);
+}
+
+// Atomic once-per-day claim across processes: two bot instances ticking the
+// same minute must not both send. 'wx' creation fails if the file exists,
+// so exactly one process wins; stale claims are namespaced by date.
+export function claimDigestDay(): boolean {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(claimFile(), String(process.pid), { flag: 'wx' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function releaseDigestClaim(): void {
+  try {
+    const { unlinkSync } = require('fs');
+    unlinkSync(claimFile());
+  } catch { /* ignore */ }
+}
+
 function pkgDigestDir(): string {
   // digest/ fetchers ship inside the published package next to dist/.
   const here = dirname(__filename);
@@ -215,6 +239,9 @@ export function startDigestScheduler(getChatId: () => number | null): void {
   setInterval(() => {
     try {
       if (!isDigestEnabled()) return;
+      // Dry runs never mark the day done (no send, no archive), so without
+      // this guard a DRY_RUN process would burn a model call every minute.
+      if (process.env.TELEGRAM_DIGEST_DRY_RUN) return;
       const now = new Date();
       const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       // Due once daily at/after the scheduled time (not an exact-minute
@@ -222,15 +249,18 @@ export function startDigestScheduler(getChatId: () => number | null): void {
       if (hhmm < digestTime()) return;
       if (lastRun() === todayStr(now)) return;
       if (Date.now() - lastFailAt < FAIL_COOLDOWN_MS) return;
+      if (!claimDigestDay()) return; // another process claimed this day
       const chatId = Number(process.env.DIGEST_CHAT_ID) || getChatId();
       if (!chatId) {
         console.log('Digest due but no chat target (no active chat yet)');
         return;
       }
       // markRun happens inside runDailyDigest on success only; a failed run
-      // cools down for an hour instead of retrying every minute.
+      // releases the claim and cools down for an hour instead of retrying
+      // every minute.
       runDailyDigest(chatId).catch((e: any) => {
         lastFailAt = Date.now();
+        releaseDigestClaim();
         console.error('Scheduled digest failed:', e.message);
       });
     } catch (e: any) {

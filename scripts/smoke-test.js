@@ -46,6 +46,13 @@ setupSlashCommands();
   await t('digest status off', await handleCommand(OWNER, 'x', '/digest status'), 'Daily digest: OFF.');
   await t('digest on', await handleCommand(OWNER, 'x', '/digest on'), 'Daily digest enabled.');
   await t('stranger digest refused', await handleCommand('999', 'x', '/digest status'), 'Not authorized.');
+  const { claimDigestDay, releaseDigestClaim } = require('../dist/digest.js');
+  releaseDigestClaim();
+  await t('digest claim first wins', claimDigestDay(), true);
+  await t('digest claim second loses', claimDigestDay(), false);
+  releaseDigestClaim();
+  await t('digest claim freed', claimDigestDay(), true);
+  releaseDigestClaim();
   console.log('smoke: all passed');
 })().catch((e) => {
   console.error('smoke FAILED:', e.message);
