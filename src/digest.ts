@@ -249,12 +249,15 @@ export function startDigestScheduler(getChatId: () => number | null): void {
       if (hhmm < digestTime()) return;
       if (lastRun() === todayStr(now)) return;
       if (Date.now() - lastFailAt < FAIL_COOLDOWN_MS) return;
-      if (!claimDigestDay()) return; // another process claimed this day
+      // Check the chat target BEFORE claiming the day: a chat-less tick
+      // must not burn the once-per-day claim, or the digest can never
+      // fire later that day no matter how much the user chats.
       const chatId = Number(process.env.DIGEST_CHAT_ID) || getChatId();
       if (!chatId) {
         console.log('Digest due but no chat target (no active chat yet)');
         return;
       }
+      if (!claimDigestDay()) return; // another process claimed this day
       // markRun happens inside runDailyDigest on success only; a failed run
       // releases the claim and cools down for an hour instead of retrying
       // every minute.

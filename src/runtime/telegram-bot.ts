@@ -129,9 +129,26 @@ function sendTelegramMessage(chatId: number, text: string): Promise<void> {
 }
 
 // --- Media sending support ---
+// activeChatId is persisted to disk so a restart does not lose the digest
+// target: without this, the daily digest waits for the user to message
+// first, while the user waits for the digest (catch-22).
+const ACTIVE_CHAT_FILE = joinPath(process.env.HOME || '/Users/gutchapa', '.opencode-telegram-state', 'active-chat-id');
 let activeChatId: number | null = null;
+try {
+  if (fsExists(ACTIVE_CHAT_FILE)) {
+    const n = Number(fsRead(ACTIVE_CHAT_FILE, 'utf-8').trim());
+    if (Number.isFinite(n) && n > 0) {
+      activeChatId = n;
+      console.log(`Restored active chat ${n} from disk`);
+    }
+  }
+} catch { /* start with no chat on any read failure */ }
 function setActiveChat(chatId: number): void {
   activeChatId = chatId;
+  try {
+    fsMkdir(joinPath(process.env.HOME || '/Users/gutchapa', '.opencode-telegram-state'), { recursive: true });
+    fsWrite(ACTIVE_CHAT_FILE, String(chatId));
+  } catch { /* persistence is best-effort */ }
 }
 export function getActiveChat(): number | null {
   return activeChatId;
