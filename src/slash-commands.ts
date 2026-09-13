@@ -10,6 +10,7 @@ import { getAgentState, setAgentState } from './agent-state';
 import { clearHistory } from './conversation-memory';
 import { handleAiMessage, resetOpencodeSessions } from './ai-handler';
 import { runShell, truncate } from './shell';
+import { getBotInfo, getPluginVersion, formatUptime } from './bot-identity';
 
 const CWD = process.env.OPENCODE_CWD || '/Users/gutchapa';
 const HOME = process.env.HOME || '/Users/gutchapa';
@@ -460,12 +461,7 @@ export function setupSlashCommands(): void {
   // --- bot ops ---
   oc('bot-ping', async () => 'pong');
   oc('bot-version', async () => {
-    const pkg = await readFile(
-      `${CWD}/package.json`,
-      'utf8',
-    ).catch(() => '{}');
-    const version = (pkg.match(/"version"\s*:\s*"([^"]+)"/) || [])[1] || 'unknown';
-    return `opencode-telegram-plugin v${version}\nNode ${process.version}\nPID ${process.pid}`;
+    return `gutchapa-opencode-telegram v${getPluginVersion()}\nNode ${process.version}\nPID ${process.pid}`;
   });
   oc('bot-logs', async () =>
     `Logs:\n${HOME}/Library/Logs/opencode-telegram-bot.log\n${HOME}/Library/Logs/opencode-telegram-bot.err.log`,
@@ -474,7 +470,23 @@ export function setupSlashCommands(): void {
   oc('bot-upgrade', async () =>
     'This plugin runs from a local checkout; upgrade via git pull + npm run build + launchctl kickstart.',
   );
-  oc('send', async (_u, args) => `Sent to current chat: ${args.trim() || '(empty)'}`);
+  oc('botinfo', async (user) => {
+    const info = await getBotInfo();
+    const model = (process.env.OPENCODE_MODEL || '').trim() || 'opencode-config default';
+    if (!info) {
+      return `Telegram identity unavailable (offline).\nPlugin: gutchapa-opencode-telegram v${getPluginVersion()}\nModel: ${model}\nYour user id: ${user}`;
+    }
+    return [
+      'My Telegram identity:',
+      '',
+      `• Bot ID: ${info.id}`,
+      `• Username: @${info.username}`,
+      `• Display name: ${info.displayName}`,
+      `• Plugin: gutchapa-opencode-telegram v${getPluginVersion()} · up ${formatUptime()}`,
+      `• Model: ${model}`,
+      `• Your user id: ${user}`,
+    ].join('\n');
+  });
   oc('dock-telegram', async () => 'Already running as the Telegram bot.');
 
   // --- CLI-only stubs (hidden from the Telegram menu) ---
@@ -482,7 +494,6 @@ export function setupSlashCommands(): void {
     'acp',
     'agents',
     'agentstatus',
-    'botinfo',
     'login',
     'crestodian',
     'install',
