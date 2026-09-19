@@ -1,6 +1,7 @@
 import { initializeBotToken, resolveBotToken } from './sdk/provider-auth';
 import { initialize } from './runtime';
 import { setOpencodeClient } from './ai-handler';
+import { configureEventNotify, handleOpencodeEvent } from './event-notify';
 
 // Minimal local types matching the opencode v1 plugin contract so this package
 // doesn't require a hard dependency on @opencode-ai/plugin at build time.
@@ -43,6 +44,30 @@ function logPluginStartupError(error: any): void {
 }
 
 async function server(input: PluginInput, options?: PluginOptions) {
+  // Push-notification hook works even when Telegram polling is off: events
+  // only need a bot token + a target chat, not an active poller. So wire it
+  // up first and always return it.
+  const notifyChatId =
+    (options?.chatId as string | undefined) ??
+    (options?.notifyChatId as string | undefined) ??
+    process.env.TELEGRAM_CHAT_ID ??
+    process.env.TELEGRAM_NOTIFY_CHAT_ID ??
+    null;
+  configureEventNotify({
+    client: input?.client,
+    directory: input?.directory,
+    chatId: notifyChatId,
+  });
+  // Notifications send via the Bot API, so the token must be loaded even
+  // when polling is disabled. Safe to do early — no network calls here.
+  const earlyToken = resolveBotToken(options);
+  if (earlyToken) initializeBotToken(earlyToken);
+  const hooks = {
+    async event({ event }: { event: unknown }) {
+      await handleOpencodeEvent(event);
+    },
+  };
+
   try {
     const enabled =
       options?.enabled === true ||
@@ -56,9 +81,9 @@ async function server(input: PluginInput, options?: PluginOptions) {
 
     if (!enabled) {
       console.log(
-        'gutchapa-opencode-telegram: Telegram polling disabled (set { "enabled": true } or TELEGRAM_PLUGIN_ENABLED=1 to enable).',
+        'gutchapa-opencode-telegram: Telegram polling disabled (set { "enabled": true } or TELEGRAM_PLUGIN_ENABLED=1 to enable). Push notifications still active.',
       );
-      return {};
+      return hooks;
     }
 
     const token = resolveBotToken(options);
@@ -72,10 +97,17 @@ async function server(input: PluginInput, options?: PluginOptions) {
     }
 
     await initialize();
-    return {};
+    // Re-configure with the resolved token's chat (initialize may have read
+    // token from env/config after our first configure call).
+    configureEventNotify({
+      client: input?.client,
+      directory: input?.directory,
+      chatId: notifyChatId,
+    });
+    return hooks;
   } catch (error: any) {
     logPluginStartupError(error);
-    return {};
+    return hooks;
   }
 }
 

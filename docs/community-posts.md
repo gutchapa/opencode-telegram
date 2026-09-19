@@ -4,11 +4,12 @@
 
 > 🚀 I built a **Telegram bot for opencode** — chat with your coding agent from your phone.
 >
-> `gutchapa-opencode-telegram` turns opencode into a Telegram bot: **70+ slash commands** (`/execute`, `/model`, `/compact`, `/status`, ...), agentic replies that run through your opencode server, and full support for **local LLMs** (llama.cpp etc.) — no cloud account needed.
+> `gutchapa-opencode-telegram` turns opencode into a Telegram bot: **75 slash commands** (`/execute`, `/model`, `/compact`, `/status`, ...), agentic replies that run through your opencode server, and full support for **local LLMs** (llama.cpp etc.) — no cloud account needed.
 >
-> ✨ Highlights:
+> ✨ Highlights (v1.2.9):
 > - Works as an opencode **plugin** or a **standalone bot**
-> - Polling is opt-in — no conflicts with existing bots or `opencode serve`
+> - Owner-aware `/start` with live status (model, uptime, version) — strangers get nothing but an allowlist line
+> - Real `/botinfo` (bot ID/username via `getMe`) and a daily AI-morning-briefing digest
 > - `/debug` shows bot + LLM health right in chat
 >
 > 📦 Install:
@@ -16,6 +17,7 @@
 > { "plugin": ["gutchapa-opencode-telegram"] }
 > ```
 > or `npm i -g gutchapa-opencode-telegram`
+> Try: `/start`, `/botinfo`, then a plain message — it routes to the agent.
 >
 > 🔗 npm: https://www.npmjs.com/package/gutchapa-opencode-telegram
 > 🔗 repo: https://github.com/gutchapa/opencode-telegram

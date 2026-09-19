@@ -2,6 +2,7 @@ import { getBotToken } from '../sdk/provider-auth';
 import { handleCommand } from './command-handler';
 import { getAgentState } from '../agent-state';
 import { syncTelegramMenuCommands } from '../telegram-menu';
+import { handlePermissionCallback } from '../event-notify';
 import https from 'https';
 import { readFileSync, existsSync } from 'fs';
 import { basename } from 'path';
@@ -84,6 +85,69 @@ async function resolveNonTextMessage(msg: any, userId: string, chatId: number): 
     return '';
   }
   return '';
+}
+
+function telegramApi(method: string, payload: Record<string, unknown>): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const token = getBotToken();
+    if (!token) {
+      reject(new Error('No bot token'));
+      return;
+    }
+    const postData = JSON.stringify(payload);
+    const req = https.request(
+      {
+        hostname: 'api.telegram.org',
+        path: `/bot${token}/${method}`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          try {
+            const response = JSON.parse(data);
+            if (response.ok) resolve(response.result);
+            else reject(new Error(response.description || `Failed ${method}`));
+          } catch (e: any) {
+            reject(e);
+          }
+        });
+      },
+    );
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
+}
+
+async function handleCallbackQuery(update: any): Promise<void> {
+  const cq = update.callback_query;
+  if (!cq?.data) return;
+  const handled = await handlePermissionCallback(
+    String(cq.data),
+    (text) => telegramApi('answerCallbackQuery', { callback_query_id: cq.id, text }),
+    (suffix) =>
+      cq.message
+        ? telegramApi('editMessageText', {
+            chat_id: cq.message.chat.id,
+            message_id: cq.message.message_id,
+            text: `${cq.message.text || ''}\n\n${suffix}`,
+          }).then(() => {})
+        : Promise.resolve(),
+  );
+  if (!handled) {
+    await telegramApi('answerCallbackQuery', {
+      callback_query_id: cq.id,
+      text: 'Unknown button',
+    }).catch(() => {});
+  }
 }
 
 function sendTelegramMessage(chatId: number, text: string): Promise<void> {
@@ -319,6 +383,12 @@ export async function startBot(): Promise<void> {
                 console.log('Processing update:', JSON.stringify(update, null, 2));
                 lastUpdateId = Math.max(lastUpdateId, update.update_id);
                 saveOffset();
+                if (update.callback_query) {
+                  handleCallbackQuery(update).catch((e: any) =>
+                    console.error('Error handling callback:', e.message),
+                  );
+                  continue;
+                }
                 if (update.message) {
                   const chatId = update.message.chat.id;
                   setActiveChat(chatId);
