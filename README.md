@@ -7,7 +7,7 @@
 
 ## Demo
 
-![Telegram bot promo](docs/promo.jpg)
+![Telegram demo](docs/demo.gif)
 
 > Telegram → `/status` → agent reply → file tool. Real session, ~30 seconds.
 >
