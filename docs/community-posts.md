@@ -4,7 +4,7 @@
 
 > 🚀 I built a **Telegram bot for opencode** — chat with your coding agent from your phone.
 >
-> `gutchapa-opencode-telegram` turns opencode into a Telegram bot: **75 slash commands** (`/execute`, `/model`, `/compact`, `/status`, ...), agentic replies that run through your opencode server, and full support for **local LLMs** (llama.cpp etc.) — no cloud account needed.
+> `gutchapa-opencode-telegram` turns opencode into a Telegram bot: **70+ slash commands** (`/execute`, `/model`, `/compact`, `/status`, ...), agentic replies that run through your opencode server, and full support for **local LLMs** (llama.cpp etc.) — no cloud account needed.
 >
 > ✨ Highlights (v1.2.9):
 > - Works as an opencode **plugin** or a **standalone bot**
@@ -59,5 +59,10 @@
 
 ## Posting tips
 - Discord: drop it in the plugin/showcase channel; add a screenshot of the `/` command menu or a chat reply — posts with images get far more replies. To grab the menu: open Telegram, type `/`, screenshot.
+- **Attach `docs/demo.gif` (30s, 4.9MB, no IDs) to every post that accepts media — Reddit, HN comment, Discord, Discussions. Video posts outperform text 10:1.**
 - The opencode ecosystem page (opencode.ai/docs/ecosystem) lists the plugin once the PR merges — that's passive discovery; the Discord post is the active push.
 - Reply to your own post a day later with a short "update" (e.g. install numbers) to keep it alive.
+
+## Round 2 order (30 Sep 2026)
+1. **Now (night IST):** Reddit r/opencode + r/TelegramBots + Discord showcase + opencode Discussions — paste drafts above, attach demo.gif.
+2. **Today 5:30–6:30pm IST (= Tue 8–9am EST):** Show HN submit (link to GitHub repo) + first comment from SOCIAL.md:114-136 + demo.gif attached to the comment thread via repo README (HN doesn't host video — the README GIF does the work, mention "demo GIF in README").
