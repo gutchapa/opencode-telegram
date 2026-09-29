@@ -7,9 +7,11 @@
 
 ## Demo
 
-![Telegram demo](docs/demo.gif)
+![Telegram bot promo](docs/promo.jpg)
 
 > Telegram → `/status` → agent reply → file tool. Real session, ~30 seconds.
+>
+> ⭐ If this is useful, [star the repo](https://github.com/gutchapa/opencode-telegram) — it's the only signal that keeps it maintained.
 
 ## Install
 
@@ -177,6 +179,7 @@ Found a bug, have a feature request, or want to say hi? Feedback lives on GitHub
 
 - **Issues:** https://github.com/gutchapa/opencode-telegram/issues
 - **Discussions:** https://github.com/gutchapa/opencode-telegram/discussions
+- **Stars:** https://github.com/gutchapa/opencode-telegram — star it if you installed it; 3.5k installs / 0 stars is why this stays invisible.
 
 Check `npm run status` in a checkout of the repo for download and traffic stats.
 
