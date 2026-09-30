@@ -14,7 +14,7 @@ const STATE_DIR = join(process.env.HOME || '/Users/gutchapa', '.opencode-telegra
 const LAST_RUN_FILE = join(STATE_DIR, 'last-digest-date');
 const FITMENT_CONTEXT =
   process.env.DIGEST_CONTEXT ||
-  'Mac user running opencode; cost-sensitive; prefers free/open tools; plain office/doc work; no enterprise needs.';
+   'Mac user running opencode AND OpenClaw; cost-sensitive; prefers free/open tools; plain office/doc work; no enterprise needs.';
 
 function digestHome(): string {
   return process.env.DIGEST_HOME || join(process.env.HOME || '/Users/gutchapa', '.config/github-digest');
@@ -128,11 +128,32 @@ async function fetchRaw(): Promise<{ radar: string; tracked: string; gh1: string
       return '{}';
     }
   };
+  const q1 = 'q=topic:ai+created:%3E2026-07-01&sort=stars&order=desc&per_page=10';
+  const q2 = 'q=ai+created:%3E2026-07-15&sort=stars&order=desc&per_page=15';
+  const [r1, r2] = await Promise.all([gh(q1), gh(q2)]);
+  // Same query, same results — gh CLI carries auth when the plain endpoint
+  // is rate-limited (this is what the old briefing relied on).
   const [gh1, gh2] = await Promise.all([
-    gh('q=topic:ai+created:%3E2026-07-01&sort=stars&order=desc&per_page=10'),
-    gh('q=ai+created:%3E2026-07-15&sort=stars&order=desc&per_page=15'),
+    ghWithCliFallback(q1, r1),
+    ghWithCliFallback(q2, r2),
   ]);
   return { radar, tracked, gh1, gh2 };
+}
+
+// Authenticated gh-CLI fallback: when the plain GitHub API rate-limits,
+// retry the identical query through `gh api` (same query, same results).
+async function ghWithCliFallback(q: string, plain: string): Promise<string> {
+  if (plain && !isRateLimited(plain)) return plain;
+  try {
+    const { stdout } = await execFileAsync('gh', ['api', `search/repositories?${q}`], { timeout: 25000, maxBuffer: 8 * 1024 * 1024 });
+    return stdout.trim().slice(0, 6000) || plain;
+  } catch {
+    return plain;
+  }
+}
+
+function isRateLimited(body: string): boolean {
+  return /rate limit|API rate limit exceeded|403/.test(body.slice(0, 500));
 }
 
 function previousBriefings(): string {
@@ -157,16 +178,16 @@ function buildPrompt(dateStr: string, raw: { radar: string; tracked: string; gh1
   return `Generate the daily AI Morning Briefing and output ONLY the briefing text (no preamble, no commentary).
 PART 1 — DIGEST (keep this exact format):
 🌅 AI Morning Briefing — ${dateStr}
-📰 NEWS: Top Story (1 item), Major News (4-6 items), New Tools & Releases (2-4 items). Use today's top AI news; prefer fresh sources.
+📰 NEWS: 🔴 Top Story (1 item), 📌 Major News (4-6 items), 🧰 New Tools & Releases (2-4 items). Use today's top AI news; prefer fresh sources. You may use web search and curl (HN Algolia API, GitHub API, gh CLI if the plain API is rate-limited — same query, same results).
 🐙 GITHUB TRENDING — NEW AI REPOS: from the GitHub API dumps below, list: name ⭐stars — one-line description.
 DEDUPE: skip any repo already listed in the PREVIOUS BRIEFINGS section — do not re-list repeats.
-PART 2 — FITMENT (mandatory final section):
+PART 2 — 🎯 FITMENT (mandatory final section):
 Assess EVERY news item and EVERY repo against this context: ${FITMENT_CONTEXT}
 ALREADY DEPLOYED — DO NOT SUGGEST (mark already have, never recommend installing).
 Authoritative list, verified across runs:
 ${manifest}
 Learning rule: if your live shell checks confirm a stable setup item (installed app, brew package, running service, configured tool) missing above, append it with: python3 -c "import json; p='${manifestPath()}'; d=json.load(open(p)); d['items'].append({'name':'<name>','note':'<one line>','added':'<today YYYY-MM-DD>','by':'briefing'}); json.dump(d,open(p,'w'),indent=2)". Additions only — never remove or edit existing entries.
-For each item: useful (one line: why + what to do) or skip (one line: reason — 'duplicate of what you run', 'paid plan', 'not our use case', 'news only', 'already have').
+For each item: ✅ useful (one line: why + what to do) or ⏭️ skip (one line: reason — 'duplicate of OpenClaw', 'paid plan', 'not our use case', 'news only', 'already have').
 End with a one-line bottom line: what to install/change today (usually 'nothing').
 Verification rule: every installed / already-have / duplicate verdict must be backed by a live shell check you ran in THIS run (ls, which, brew list, mdfind). If a check is denied or tools are unavailable, mark that verdict unverified instead of guessing — never assert installation state you did not observe.
 Keep the section tight — bullets, no essays. Plain text only: NO Markdown formatting (no asterisks, underscores, backticks, hashes, brackets) — the transport rejects it.
