@@ -187,7 +187,13 @@ ALREADY DEPLOYED — DO NOT SUGGEST (mark already have, never recommend installi
 Authoritative list, verified across runs:
 ${manifest}
 Learning rule: if your live shell checks confirm a stable setup item (installed app, brew package, running service, configured tool) missing above, append it with: python3 -c "import json; p='${manifestPath()}'; d=json.load(open(p)); d['items'].append({'name':'<name>','note':'<one line>','added':'<today YYYY-MM-DD>','by':'briefing'}); json.dump(d,open(p,'w'),indent=2)". Additions only — never remove or edit existing entries.
-For each item: ✅ useful (one line: why + what to do) or ⏭️ skip (one line: reason — 'duplicate of OpenClaw', 'paid plan', 'not our use case', 'news only', 'already have').
+For each item emit EXACTLY one bullet in this literal shape (glyph is mandatory, not optional):
+• <name> — ✅ useful (<one line: why + what to do>)
+• <name> — ⏭️ skip (<one line reason: 'duplicate of OpenClaw', 'paid plan', 'not our use case', 'news only', 'already have'>)
+Few-shot (copy this style):
+• elder-plinius/T3MP3ST — ⏭️ skip (offensive security; not our use case)
+• Leonxlnx/unlazy — ✅ useful (free/open anti-laziness skill; port its Depth-Tree idea into an OpenClaw skill)
+A verdict bullet without a leading ✅ or ⏭️ glyph is malformed — never emit one.
 End with a one-line bottom line: what to install/change today (usually 'nothing').
 Verification rule: every installed / already-have / duplicate verdict must be backed by a live shell check you ran in THIS run (ls, which, brew list, mdfind). If a check is denied or tools are unavailable, mark that verdict unverified instead of guessing — never assert installation state you did not observe.
 Keep the section tight — bullets, no essays. Plain text only: NO Markdown formatting (no asterisks, underscores, backticks, hashes, brackets) — the transport rejects it.
