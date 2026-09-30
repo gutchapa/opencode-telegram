@@ -278,7 +278,13 @@ export async function runOpencodeAgentic(fullPrompt: string, user: string, lates
     child.on('error', reject);
     child.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`opencode run exited with code ${code}: ${stderr.trim()}`));
+        // code null = killed by signal (/stop SIGKILL). Report cancellation,
+        // not failure — the caller swallows this into a quiet "Stopped".
+        if (code === null) {
+          reject(Object.assign(new Error('agentic run stopped by user'), { cancelled: true }));
+        } else {
+          reject(new Error(`opencode run exited with code ${code}: ${stderr.trim()}`));
+        }
       } else {
         resolve();
       }
@@ -370,6 +376,10 @@ export async function handleAiMessage(user: string, message: string): Promise<st
           return truncate(agentic);
         }
       } catch (error: any) {
+        if (error?.cancelled) {
+          console.log('Agentic run cancelled by /stop — no reply sent.');
+          return 'Stopped — run cancelled, nothing sent.';
+        }
         console.error('opencode run failed:', error.message);
         agentFallback = 'error';
         lastError = error.message;

@@ -300,8 +300,14 @@ export function startDigestScheduler(getChatId: () => number | null): void {
       // releases the claim and cools down for an hour instead of retrying
       // every minute.
       runDailyDigest(chatId).catch((e: any) => {
-        lastFailAt = Date.now();
+        // A /stop-cancelled digest releases the day (retryable via /digest)
+        // but must not burn the 1h failure cooldown.
         releaseDigestClaim();
+        if (e?.cancelled) {
+          console.log('Scheduled digest stopped by user — claim released, no cooldown.');
+          return;
+        }
+        lastFailAt = Date.now();
         console.error('Scheduled digest failed:', e.message);
       });
     } catch (e: any) {
