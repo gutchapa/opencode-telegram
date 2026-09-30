@@ -454,8 +454,12 @@ export function setupSlashCommands(): void {
     if (!chatId) {
       return 'No chat target for the digest yet — send any message first, then /digest again.';
     }
+    // Ack FIRST so the user isn't staring at nothing for the whole agent
+    // run (fetchers + model + fitment ≈ 1 min). Fire-and-forget on purpose.
+    const { sendTextToChat } = await import('./runtime/telegram-bot');
+    sendTextToChat(chatId, 'Brewing your briefing — fetchers plus model plus fitment, about a minute...').catch(() => {});
     await runDailyDigest(chatId);
-    return 'Digest sent.';
+    return null; // briefing chunks ARE the reply; no 'Digest sent.' noise
   });
 
   // --- bot ops ---

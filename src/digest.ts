@@ -110,7 +110,7 @@ async function runFetcher(cmd: string, args: string[]): Promise<string> {
   }
 }
 
-async function fetchRaw(): Promise<{ radar: string; tracked: string; gh1: string; gh2: string }> {
+async function fetchRaw(): Promise<{ radar: string; tracked: string; news: string; gh1: string; gh2: string }> {
   const dir = pkgDigestDir();
   const py = process.env.PYTHON_BIN || 'python3';
   const [radar, tracked] = await Promise.all([
@@ -137,7 +137,22 @@ async function fetchRaw(): Promise<{ radar: string; tracked: string; gh1: string
     ghWithCliFallback(q1, r1),
     ghWithCliFallback(q2, r2),
   ]);
-  return { radar, tracked, gh1, gh2 };
+  return { radar, tracked, news: await fetchNews(), gh1, gh2 };
+}
+
+// HN Algolia: today's top AI stories, one cheap call (~2s). Without this
+// the prompt's NEWS section has no source once browsing is disallowed.
+async function fetchNews(): Promise<string> {
+  try {
+    const since = Math.floor(Date.now() / 1000) - 86400;
+    const url = `https://hn.algolia.com/api/v1/search_by_date?query=AI&tags=story&numericFilters=created_at_i>${since}&hitsPerPage=8`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'opencode-telegram-digest' }, signal: AbortSignal.timeout(20000) });
+    const j: any = await res.json();
+    const lines = (j.hits || []).map((h: any) => `* ${h.title || ''} (${h.points || 0} pts)`);
+    return lines.length ? lines.join('\n') : '(no AI news in the last 24h)';
+  } catch {
+    return '(news unavailable)';
+  }
 }
 
 // Authenticated gh-CLI fallback: when the plain GitHub API rate-limits,
@@ -173,12 +188,12 @@ function previousBriefings(): string {
   }
 }
 
-function buildPrompt(dateStr: string, raw: { radar: string; tracked: string; gh1: string; gh2: string }, previous: string): string {
+function buildPrompt(dateStr: string, raw: { radar: string; tracked: string; news: string; gh1: string; gh2: string }, previous: string): string {
   const manifest = readManifest();
   return `Generate the daily AI Morning Briefing and output ONLY the briefing text (no preamble, no commentary).
 PART 1 — DIGEST (keep this exact format):
 🌅 AI Morning Briefing — ${dateStr}
-📰 NEWS: 🔴 Top Story (1 item), 📌 Major News (4-6 items), 🧰 New Tools & Releases (2-4 items). Use today's top AI news; prefer fresh sources. You may use web search and curl (HN Algolia API, GitHub API, gh CLI if the plain API is rate-limited — same query, same results).
+📰 NEWS: 🔴 Top Story (1 item), 📌 Major News (4-6 items), 🧰 New Tools & Releases (2-4 items). Use today's top AI news; prefer fresh sources. Work ONLY from the dumps below — no web browsing. Verify installs with at most 6 shell checks total (which/ls/brew list), then write.
 🐙 GITHUB TRENDING — NEW AI REPOS: from the GitHub API dumps below, list: name ⭐stars — one-line description.
 DEDUPE: skip any repo already listed in the PREVIOUS BRIEFINGS section — do not re-list repeats.
 PART 2 — 🎯 FITMENT (mandatory final section):
@@ -200,6 +215,9 @@ Keep the section tight — bullets, no essays. Plain text only: NO Markdown form
 
 RAW RADAR:
 ${raw.radar}
+
+TODAY'S AI NEWS (HN, last 24h — use for the NEWS section):
+${raw.news}
 
 RAW TRACKED ACTIVITY:
 ${raw.tracked}
