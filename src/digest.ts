@@ -235,8 +235,19 @@ export async function runDailyDigest(chatId: number): Promise<string> {
 let lastFailAt = 0;
 const FAIL_COOLDOWN_MS = 3600000;
 
+// Idempotency: opencode may invoke the plugin server function multiple times
+// in one process (reload, reconnect, multi-directory). Without this guard
+// every invocation spawned its own setInterval -> N schedulers ticking every
+// minute ("firing 6 times in the log"). First call wins, rest are no-ops.
+let schedulerStarted = false;
+
 export function startDigestScheduler(getChatId: () => number | null): void {
-  setInterval(() => {
+  if (schedulerStarted) {
+    console.log('Daily digest scheduler already armed — skipping duplicate start');
+    return;
+  }
+  schedulerStarted = true;
+  const timer = setInterval(() => {
     try {
       if (!isDigestEnabled()) return;
       // Dry runs never mark the day done (no send, no archive), so without
@@ -270,5 +281,8 @@ export function startDigestScheduler(getChatId: () => number | null): void {
       console.error('Digest scheduler tick failed:', e.message);
     }
   }, 60000);
+  // Never pin the host event loop: the plugin must not keep opencode alive
+  // on its own, and standalone mode is held open by the Telegram poller.
+  (timer as any)?.unref?.();
   console.log(`Daily digest scheduler armed (${digestTime()}, enabled=${isDigestEnabled()})`);
 }
