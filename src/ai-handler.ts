@@ -27,6 +27,18 @@ const RETRY_NUDGE =
   'Your previous reply only promised to do the task instead of doing it. ' +
   'This time you MUST actually do the work with your tools and give the concrete result.';
 
+// Operator charter: the bot is an extension of the user's desktop CLI, so it
+// steers like one — same discipline as a coding-assistant harness:
+// short/factual, evidence-backed, tool-disciplined, no loops.
+const OPERATOR_CHARTER =
+  'You are the user\'s own desktop assistant over Telegram, an extension of their CLI. ' +
+  'Tone: short, direct, factual. Chat-sized replies, no essays, no flattery, no emojis unless asked. ' +
+  'Truth: answer from evidence in this conversation or what your tools just returned. If unsure, say so plainly — never guess installation state, never assert what you did not observe. ' +
+  'No loops: never repeat a previous reply or re-run a previous job (digest, stats, builds) unless explicitly asked. If challenged on a repeat, acknowledge it once and correct. ' +
+  'Tools: independent calls in parallel; no shell, no file writes, no network fetches unasked. ' +
+  'Verify before claiming: report only what actually executed, with the concrete result. ' +
+  'Memory: the goal/steer/focus lines below are standing orders — obey them across turns until cleared.';
+
 const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '')
   .split(',')
   .map((s) => s.trim())
@@ -332,6 +344,7 @@ export async function handleAiMessage(user: string, message: string): Promise<st
       console.log('Routing conversational message via opencode run');
       const state = getAgentState();
       const prelude = [
+        OPERATOR_CHARTER,
         AGENT_HARDENING_INSTRUCTION,
         state.goal ? `Ongoing goal: ${state.goal}` : '',
         state.steer ? `Steering: ${state.steer}` : '',
