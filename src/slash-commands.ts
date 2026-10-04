@@ -131,7 +131,7 @@ function buildHelp(): string {
     '🤖 opencode-bot commands',
     '',
     'Tools:',
-    '/execute <cmd> · /exec · /bash — run a shell command (destructive asks /yes first)',
+    '/execute · /exec · /bash — disabled (phone-typo safety); ask in plain words instead',
     '/read <path> — read a file',
     '/search <pattern> [path] — grep for a pattern',
     '/list [path] — list a directory',
@@ -345,30 +345,8 @@ export function setupSlashCommands(): void {
     `Allowed Telegram users: ${ALLOWED.join(', ') || '(none)'} (set via ALLOWED_TELEGRAM_USERS)`,
   );
   oc('approve', async () => 'No pending approvals.');
-  oc('exec', async (user, args) => {
-    const { gatedShell } = await import('./shell');
-    return gatedShell(user, args);
-  });
-  oc('bash', async (user, args) => {
-    const { gatedShell } = await import('./shell');
-    return gatedShell(user, args);
-  });
-  oc('yes', async (user, args) => {
-    const { confirmPending } = await import('./guardrails');
-    const { runRawShell } = await import('./shell');
-    const cmd = confirmPending(user, args.trim());
-    if (!cmd) return 'No matching pending command (wrong token or expired after 5 min).';
-    try {
-      return await runRawShell(cmd);
-    } catch (e: any) {
-      return `Error: ${(e.stderr || e.message || '').trim() || 'Command failed'}`;
-    }
-  });
-  oc('no', async (user, args) => {
-    const { cancelPending } = await import('./guardrails');
-    const n = cancelPending(user, args.trim() || undefined);
-    return n ? `Dropped ${n} pending command${n === 1 ? '' : 's'}.` : 'Nothing pending.';
-  });
+  oc('exec', async () => 'Shell via /exec is disabled on this bot (phone-typo safety). Ask in plain words instead.');
+  oc('bash', async () => 'Shell via /bash is disabled on this bot (phone-typo safety). Ask in plain words instead.');
   oc('activation', async (_u, args) => {
     const s = getAgentState();
     const a = args.trim().toLowerCase();

@@ -27,8 +27,6 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   'dock-telegram': 'Telegram bot status',
   elev: 'Elevated mode on',
   elevated: 'Elevated mode toggle',
-  exec: 'Run a shell command',
-  execute: 'Run a shell command',
   export: 'Export conversation log',
   'export-session': 'Export session log',
   'export-trajectory': 'Export trajectory log',
@@ -82,8 +80,6 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   usage: 'Usage tracking (off/tokens/full)',
   verbose: 'Verbose mode toggle',
   whoami: 'Show who you are',
-  yes: 'Confirm a pending shell command',
-  no: 'Drop pending shell command(s)',
 };
 
 const TELEGRAM_MAX_COMMANDS = 100;

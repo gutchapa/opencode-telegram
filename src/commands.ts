@@ -48,16 +48,7 @@ export function setupCommands(): void {
   });
   registerPluginCommand('*', 'execute', async (user, cmd, args) => {
     if (!isAllowed(user)) return 'Not authorized.';
-    const command = args.trim();
-    if (!command) return 'Usage: /execute <shell command>';
-    try {
-      // Phone-typo gate lives inside gatedShell: harmless runs direct,
-      // destructive returns a /yes confirm prompt instead.
-      return await gatedShell(user, command);
-    } catch (error: any) {
-      const detail = (error.stderr || error.message || '').trim();
-      return truncate(`Error: ${detail}` || 'Command failed');
-    }
+    return 'Shell via /execute is disabled on this bot (phone-typo safety). Ask in plain words — the agent runs safe read-only checks itself.';
   });
 
   registerPluginCommand('*', 'read', async (user, cmd, args) => {
