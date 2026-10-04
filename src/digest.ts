@@ -110,12 +110,13 @@ async function runFetcher(cmd: string, args: string[]): Promise<string> {
   }
 }
 
-async function fetchRaw(): Promise<{ radar: string; tracked: string; news: string; gh1: string; gh2: string }> {
+async function fetchRaw(): Promise<{ radar: string; tracked: string; news: string; arxivBest: string; gh1: string; gh2: string }> {
   const dir = pkgDigestDir();
   const py = process.env.PYTHON_BIN || 'python3';
-  const [radar, tracked] = await Promise.all([
+  const [radar, tracked, arxivBest] = await Promise.all([
     runFetcher(py, [join(dir, 'github-radar.py')]),
     runFetcher(py, [join(dir, 'github-digest.py'), '--since', '24']),
+    runFetcher(py, [join(dir, 'arxiv-best.py'), '--max', '8']),
   ]);
   const gh = async (q: string): Promise<string> => {
     try {
@@ -137,7 +138,7 @@ async function fetchRaw(): Promise<{ radar: string; tracked: string; news: strin
     ghWithCliFallback(q1, r1),
     ghWithCliFallback(q2, r2),
   ]);
-  return { radar, tracked, news: await fetchNews(), gh1, gh2 };
+  return { radar, tracked, news: await fetchNews(), arxivBest, gh1, gh2 };
 }
 
 // HN Algolia: today's top AI stories, one cheap call (~2s). Without this
@@ -188,13 +189,14 @@ function previousBriefings(): string {
   }
 }
 
-function buildPrompt(dateStr: string, raw: { radar: string; tracked: string; news: string; gh1: string; gh2: string }, previous: string): string {
+function buildPrompt(dateStr: string, raw: { radar: string; tracked: string; news: string; arxivBest: string; gh1: string; gh2: string }, previous: string): string {
   const manifest = readManifest();
   return `Generate the daily AI Morning Briefing and output ONLY the briefing text (no preamble, no commentary).
 PART 1 — DIGEST (keep this exact format):
 🌅 AI Morning Briefing — ${dateStr}
 📰 NEWS: 🔴 Top Story (1 item), 📌 Major News (4-6 items), 🧰 New Tools & Releases (2-4 items). Use today's top AI news; prefer fresh sources. Work ONLY from the dumps below — no web browsing. Verify installs with at most 6 shell checks total (which/ls/brew list), then write.
 🐙 GITHUB TRENDING — NEW AI REPOS: from the GitHub API dumps below, list: name ⭐stars — one-line description.
+📄 PAPERS: max 3 from RAW ARXIV BEST below, skip entirely if none are relevant to the fitment context. Total briefing length unchanged — keep every other section tight to fit.
 DEDUPE: skip any repo already listed in the PREVIOUS BRIEFINGS section — do not re-list repeats.
 PART 2 — 🎯 FITMENT (mandatory final section):
 Assess EVERY news item and EVERY repo against this context: ${FITMENT_CONTEXT}
@@ -221,6 +223,9 @@ ${raw.news}
 
 RAW TRACKED ACTIVITY:
 ${raw.tracked}
+
+RAW ARXIV BEST (scored papers — use for the PAPERS line, max 3, skip if irrelevant):
+${raw.arxivBest}
 
 GITHUB API DUMP 1:
 ${raw.gh1}
