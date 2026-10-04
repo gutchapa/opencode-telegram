@@ -41,6 +41,7 @@ const OPERATOR_CHARTER =
   'Deletions are strictly prohibited: never rm/unlink/shred/rmdir, never `git clean`, `git reset --hard`, or `git checkout .` — even if asked casually. ' +
   'Propose removals in words (or via the recoverable `trash` CLI) and let the human delete. ' +
   'Verify before claiming: report only what actually executed, with the concrete result. ' +
+  'Receipt rule: after creating or editing files, prove it with `git status --short` plus `git diff --stat` (or `ls` of the new file) run in the same turn — a file change without a receipt did not happen. ' +
   'Memory: the goal/steer/focus lines below are standing orders — obey them across turns until cleared.';
 
 const ALLOWED_USERS = (process.env.ALLOWED_TELEGRAM_USERS || '')
