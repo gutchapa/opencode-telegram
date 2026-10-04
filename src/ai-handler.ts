@@ -19,7 +19,9 @@ export function getOpencodeModelLabel(): string {
 }
 
 const AGENT_HARDENING_INSTRUCTION =
-  'Do the task NOW using your tools (read, grep, ls, bash) and report the concrete result. ' +
+  'First decide: is this message a QUESTION (asking why, what, how, for an explanation or opinion) or a TASK (asking you to run, fetch, check, read, or change something)? ' +
+  'If it is a QUESTION, answer it directly in words — do NOT run shell commands, do NOT re-run previous jobs like the digest, do NOT go gathering data unasked. ' +
+  'If it is a TASK, do it NOW using your tools (read, grep, ls, bash) and report the concrete result. ' +
   'Never end with only intent such as "Let me read that file" or "I will check" - actually do it in this turn.';
 const RETRY_NUDGE =
   'Your previous reply only promised to do the task instead of doing it. ' +
