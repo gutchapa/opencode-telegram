@@ -2,6 +2,8 @@ import { spawn, ChildProcess } from 'child_process';
 import { setAiHandler, getRegisteredCommands } from './sdk/plugin-runtime';
 import { getAgentState } from './agent-state';
 import { appendMessage, getHistory, formatTranscript, HistoryEntry } from './conversation-memory';
+import { getActiveProject } from './projects';
+import { ensureBotConfig } from './guardrails';
 
 const OPENCODE_BIN = process.env.OPENCODE_BIN || '/Users/gutchapa/.local/bin/opencode';
 const OPENCODE_CWD = process.env.OPENCODE_CWD || '/Users/gutchapa/.opencode-bot-ws';
@@ -36,6 +38,8 @@ const OPERATOR_CHARTER =
   'Truth: answer from evidence in this conversation or what your tools just returned. If unsure, say so plainly — never guess installation state, never assert what you did not observe. ' +
   'No loops: never repeat a previous reply or re-run a previous job (digest, stats, builds) unless explicitly asked. If challenged on a repeat, acknowledge it once and correct. ' +
   'Tools: independent calls in parallel; no shell, no file writes, no network fetches unasked. ' +
+  'Deletions are strictly prohibited: never rm/unlink/shred/rmdir, never `git clean`, `git reset --hard`, or `git checkout .` — even if asked casually. ' +
+  'Propose removals in words (or via the recoverable `trash` CLI) and let the human delete. ' +
   'Verify before claiming: report only what actually executed, with the concrete result. ' +
   'Memory: the goal/steer/focus lines below are standing orders — obey them across turns until cleared.';
 
@@ -265,10 +269,16 @@ export async function runOpencodeAgentic(fullPrompt: string, user: string, lates
   if (liveModel) {
     args.splice(2, 0, '--model', liveModel);
   }
+  // Run inside the user's ACTIVE project (phone != bot workspace), and with
+  // the bot guardrail config layered in when the user hasn't pinned their own
+  // OPENCODE_CONFIG (explicit user config always wins).
+  const projectDir = getActiveProject(user);
+  args.push('--dir', projectDir);
+  const botConfig = ensureBotConfig();
   const child = spawn(OPENCODE_BIN, args, {
     cwd: OPENCODE_CWD,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, NO_COLOR: '1' },
+    env: { ...process.env, NO_COLOR: '1', ...(botConfig ? { OPENCODE_CONFIG: botConfig } : {}) },
   });
   currentChild = child;
 

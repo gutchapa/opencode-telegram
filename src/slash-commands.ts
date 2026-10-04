@@ -143,6 +143,7 @@ function buildHelp(): string {
     '/stop — drop queued agentic runs',
     '/status — bot status',
     '/id · /whoami · /name [x] — identity',
+    '/project [path] · /projects — active project dir (agent runs here, not the bot workspace)',
     '/goal <text> — set an ongoing goal for the agent',
     '/steer <text> — steering note for the agent',
     '/tell <text> — send a direct instruction to the agent',
@@ -216,8 +217,18 @@ export function setupSlashCommands(): void {
     const { stopAgenticRuns } = await import('./ai-handler');
     return stopAgenticRuns();
   });
-  oc('status', async () => stateSummary());
-  oc('id', async (user) => `Telegram user id: ${user}\nSession: per-user conversation memory (cleared by /new)`);
+    oc('status', async () => stateSummary());
+  oc('project', async (user, args) => {
+    const { getActiveProject, setActiveProject, describeRoots } = await import('./projects');
+    const target = args.trim();
+    if (!target) return `Active project: ${getActiveProject(user)}\nRoots: ${describeRoots()}`;
+    const dir = setActiveProject(user, target);
+    return `Active project: ${dir}\nAgent runs here from now on.`;
+  });
+  oc('projects', async () => {
+    const { listProjects, describeRoots } = await import('./projects');
+    return `Roots: ${describeRoots()}\n\n${listProjects().join('\n')}\n\nSwitch with /project <path>.`;
+  });  oc('id', async (user) => `Telegram user id: ${user}\nSession: per-user conversation memory (cleared by /new)`);
   oc('whoami', async (user) => {
     const s = getAgentState();
     return `You are Telegram user ${user}. I am ${s.name}, the opencode telegram bot.`;
