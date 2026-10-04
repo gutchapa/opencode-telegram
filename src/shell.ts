@@ -32,12 +32,30 @@ export function truncate(text: string, max = 4000): string {
   return text.length > max ? text.slice(0, max) + '\n\n…(truncated)' : text;
 }
 
-export async function runShell(cmd: string): Promise<string> {
-  if (!cmd.trim()) return 'Usage: /exec <command>';
+export async function runRawShell(cmd: string): Promise<string> {
   const { stdout, stderr } = await execFileAsync(resolveShell(), ['-c', cmd], {
     cwd: resolveCwd(),
     timeout: 60000,
     maxBuffer: 8 * 1024 * 1024,
   });
   return truncate((stdout + (stderr ? `\n${stderr}` : '')).trim() || '(no output)');
+}
+
+export async function runShell(cmd: string): Promise<string> {
+  if (!cmd.trim()) return 'Usage: /exec <command>';
+  return runRawShell(cmd);
+}
+
+// Phone-typo gate: destructive strings return a confirm prompt instead of
+// running. Caller (the /yes handler) runs runRawShell after confirmation.
+export async function gatedShell(user: string, cmd: string): Promise<string> {
+  const { looksDestructive, requestConfirm } = await import('./guardrails');
+  const c = cmd.trim();
+  if (!c) return 'Usage: /execute <shell command>';
+  if (!looksDestructive(c)) return runRawShell(c);
+  const token = requestConfirm(user, c);
+  return (
+    `⚠️ Looks destructive — NOT run.\n\`${c}\`\n\n` +
+    `Reply /yes ${token} within 5 min to run it, /no to drop it.`
+  );
 }

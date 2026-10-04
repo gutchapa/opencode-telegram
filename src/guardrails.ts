@@ -65,3 +65,52 @@ export function ensureBotConfig(): string | null {
 export function deniedPatterns(): string[] {
   return Object.keys(BASH_DENIES);
 }
+
+// Phone-typo gate for /execute, /exec, /bash: destructive-looking strings
+// never run on first send. The user confirms with /yes <token> (or drops
+// with /no). Judges the final string, not intent — a typo that creates
+// `rm -rf / tmp` is caught the same as a deliberate one.
+const CONFIRM_EXTRAS = ['sudo *'];
+
+function globToRegExp(glob: string): RegExp {
+  const esc = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return new RegExp(`^${esc}$`, 's');
+}
+
+const DESTRUCTIVE_RES = [...Object.keys(BASH_DENIES), ...CONFIRM_EXTRAS].map(globToRegExp);
+
+export function looksDestructive(cmd: string): boolean {
+  const c = cmd.trim().replace(/\s+/g, ' ');
+  return DESTRUCTIVE_RES.some((re) => re.test(c));
+}
+
+type Pending = { user: string; cmd: string; expiresAt: number };
+const pending = new Map<string, Pending>();
+const CONFIRM_TTL_MS = 5 * 60 * 1000;
+
+export function requestConfirm(user: string, cmd: string): string {
+  const { randomBytes } = require('crypto');
+  const token = randomBytes(2).toString('hex');
+  pending.set(`${user}:${token}`, { user, cmd, expiresAt: Date.now() + CONFIRM_TTL_MS });
+  return token;
+}
+
+export function confirmPending(user: string, token: string): string | null {
+  const key = `${user}:${token.trim().toLowerCase()}`;
+  const p = pending.get(key);
+  pending.delete(key);
+  if (!p) return null;
+  if (Date.now() > p.expiresAt) return null;
+  return p.cmd;
+}
+
+export function cancelPending(user: string, token?: string): number {
+  let n = 0;
+  for (const [k, p] of pending) {
+    if (p.user !== user) continue;
+    if (token && k !== `${user}:${token.trim().toLowerCase()}`) continue;
+    pending.delete(k);
+    n += 1;
+  }
+  return n;
+}

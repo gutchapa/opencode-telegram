@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import { registerPluginCommand } from './sdk/plugin-runtime';
 import { existsSync } from 'fs';
 import { sendMediaToCurrentChat } from './runtime/telegram-bot';
-import { truncate, resolveShell, resolveCwd } from './shell';
+import { truncate, resolveCwd, gatedShell } from './shell';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,13 +51,9 @@ export function setupCommands(): void {
     const command = args.trim();
     if (!command) return 'Usage: /execute <shell command>';
     try {
-      const { stdout, stderr } = await execFileAsync(resolveShell(), ['-c', command], {
-        cwd: resolveCwd(),
-        timeout: 60000,
-        maxBuffer: 8 * 1024 * 1024,
-      });
-      const out = (stdout + (stderr ? '\n[stderr] ' + stderr : '')).trim();
-      return truncate(out || '(no output)');
+      // Phone-typo gate lives inside gatedShell: harmless runs direct,
+      // destructive returns a /yes confirm prompt instead.
+      return await gatedShell(user, command);
     } catch (error: any) {
       const detail = (error.stderr || error.message || '').trim();
       return truncate(`Error: ${detail}` || 'Command failed');
