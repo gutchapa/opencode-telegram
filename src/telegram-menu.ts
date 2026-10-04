@@ -52,6 +52,8 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   plugin: 'Plugin info',
   plugins: 'List plugins',
   prose: 'Prose mode toggle',
+  project: 'Show or set active project dir',
+  projects: 'List project directories',
   read: 'Read a file',
   reason: 'Reasoning output toggle',
   reasoning: 'Reasoning output toggle',
