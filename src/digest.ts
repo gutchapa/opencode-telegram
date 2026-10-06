@@ -14,7 +14,7 @@ const STATE_DIR = join(process.env.HOME || '/Users/gutchapa', '.opencode-telegra
 const LAST_RUN_FILE = join(STATE_DIR, 'last-digest-date');
 const FITMENT_CONTEXT =
   process.env.DIGEST_CONTEXT ||
-   'Mac user running opencode AND OpenClaw; cost-sensitive; prefers free/open tools; plain office/doc work; no enterprise needs.';
+  'Developer on the machine hosting this bot; cost-sensitive; prefers free/open tools; plain office/doc/dev work; no enterprise needs. Judge fit against the tools the live shell checks actually find on THIS machine, not any assumed setup.';
 
 function digestHome(): string {
   return process.env.DIGEST_HOME || join(process.env.HOME || '/Users/gutchapa', '.config/github-digest');
