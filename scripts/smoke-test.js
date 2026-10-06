@@ -34,7 +34,7 @@ setupSlashCommands();
   await t('stranger setaccount refused', await handleCommand('999', 'x', '/setaccount a b'), 'Not authorized.');
   await t('stranger unknown refused', await handleCommand('999', 'x', 'answer me'), 'Not authorized.');
   await t('owner listallow works', await handleCommand(OWNER, 'x', '/listallow'), 'Allowed Telegram users: ' + OWNER);
-  await t('owner execute works', await handleCommand(OWNER, 'x', '/execute echo HI'), 'HI');
+  await t('owner execute disabled', await handleCommand(OWNER, 'x', '/execute echo HI'), 'Shell via /execute is disabled on this bot (phone-typo safety). Ask in plain words — the agent runs safe read-only checks itself.');
   const { parseTranscript } = require('../dist/voice.js');
   await t('transcript segments parsed',
     parseTranscript('[00:00:00.000 --> 00:00:02.000]  hello world\nwhisper_print_timings: total time = 1ms\n'),

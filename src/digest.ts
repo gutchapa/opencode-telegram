@@ -110,7 +110,7 @@ async function runFetcher(cmd: string, args: string[]): Promise<string> {
   }
 }
 
-async function fetchRaw(): Promise<{ radar: string; tracked: string; news: string; arxivBest: string; gh1: string; gh2: string }> {
+async function fetchRaw(): Promise<{ radar: string; tracked: string; news: string; rss: string; grok: string; arxivBest: string; gh1: string; gh2: string }> {
   const dir = pkgDigestDir();
   const py = process.env.PYTHON_BIN || 'python3';
   const [radar, tracked, arxivBest] = await Promise.all([
@@ -129,8 +129,11 @@ async function fetchRaw(): Promise<{ radar: string; tracked: string; news: strin
       return '{}';
     }
   };
-  const q1 = 'q=topic:ai+created:%3E2026-07-01&sort=stars&order=desc&per_page=10';
-  const q2 = 'q=ai+created:%3E2026-07-15&sort=stars&order=desc&per_page=15';
+  // Rolling window: repos created in the last 14 days, so the dumps stay
+  // fresh instead of returning the same star-sorted stalwarts daily.
+  const since14 = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+  const q1 = `q=topic:ai+created:%3E${since14}&sort=stars&order=desc&per_page=10`;
+  const q2 = `q=ai+created:%3E${since14}&sort=stars&order=desc&per_page=15`;
   const [r1, r2] = await Promise.all([gh(q1), gh(q2)]);
   // Same query, same results — gh CLI carries auth when the plain endpoint
   // is rate-limited (this is what the old briefing relied on).
@@ -138,7 +141,8 @@ async function fetchRaw(): Promise<{ radar: string; tracked: string; news: strin
     ghWithCliFallback(q1, r1),
     ghWithCliFallback(q2, r2),
   ]);
-  return { radar, tracked, news: await fetchNews(), arxivBest, gh1, gh2 };
+  const [news, rss, grok] = await Promise.all([fetchNews(), fetchRss(), fetchGrok()]);
+  return { radar, tracked, news, rss, grok, arxivBest, gh1, gh2 };
 }
 
 // HN Algolia: today's top AI stories, one cheap call (~2s). Without this
@@ -156,6 +160,78 @@ async function fetchNews(): Promise<string> {
   }
 }
 
+// Curated press RSS: real AI news density for days HN is thin. Public GET,
+// no keys, ships via npm. General feeds are keyword-filtered to AI items.
+const RSS_FEEDS: { name: string; url: string; filter: boolean }[] = [
+  { name: 'TC', url: 'https://techcrunch.com/category/artificial-intelligence/feed/', filter: false },
+  { name: 'HF', url: 'https://huggingface.co/blog/feed.xml', filter: false },
+  { name: 'SW', url: 'https://simonwillison.net/atom/everything/', filter: true },
+  { name: 'Verge', url: 'https://www.theverge.com/rss/index.xml', filter: true },
+  { name: 'Ars', url: 'https://feeds.arstechnica.com/arstechnica/index/', filter: true },
+];
+const AI_RE = /ai\b|llm|gpt|claude|gemini|grok|mistral|deepseek|qwen|llama|model|openai|anthropic|agent|robot|chip|nvidia|hugging/i;
+
+function parseRss(xml: string): { title: string; link: string; date: number }[] {
+  const out: { title: string; link: string; date: number }[] = [];
+  const clean = (s: string) => s.replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim();
+  // RSS <item> blocks.
+  for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+    const b = m[1];
+    const t = /<title>([\s\S]*?)<\/title>/.exec(b);
+    const l = /<link>([\s\S]*?)<\/link>/.exec(b);
+    const d = /<(pubDate|updated)>([\s\S]*?)<\/(pubDate|updated)>/.exec(b);
+    if (t) out.push({ title: clean(t[1]).slice(0, 140), link: clean(l ? l[1] : ''), date: d ? Date.parse(d[2]) || 0 : 0 });
+  }
+  // Atom <entry> blocks.
+  for (const m of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+    const b = m[1];
+    const t = /<title[^>]*>([\s\S]*?)<\/title>/.exec(b);
+    const l = /<link[^>]*href="([^"]+)"/.exec(b) || /<link>([\s\S]*?)<\/link>/.exec(b);
+    const d = /<(published|updated)>([\s\S]*?)<\/(published|updated)>/.exec(b);
+    if (t) out.push({ title: clean(t[1]).slice(0, 140), link: (l ? clean(l[1]) : ''), date: d ? Date.parse(d[2]) || 0 : 0 });
+  }
+  return out;
+}
+
+async function fetchRss(): Promise<string> {
+  const cutoff = Date.now() - 864e5;
+  const one = async (f: { name: string; url: string; filter: boolean }): Promise<string[]> => {
+    try {
+      const res = await fetch(f.url, { headers: { 'User-Agent': 'opencode-telegram-digest' }, signal: AbortSignal.timeout(15000) });
+      const items = parseRss(await res.text());
+      const fresh = items.filter((i) => i.date >= cutoff);
+      const pool = fresh.length ? fresh : items.slice(0, 3);
+      return pool.filter((i) => !f.filter || AI_RE.test(i.title)).slice(0, 4).map((i) => `* ${i.title} [${f.name}]`);
+    } catch {
+      return [];
+    }
+  };
+  const lists = await Promise.all(RSS_FEEDS.map(one));
+  const lines = lists.flat();
+  return lines.length ? lines.join('\n').slice(0, 2500) : '(press feeds unavailable)';
+}
+// One cheap call (~2s). Versions == model/feature releases, so the NEWS
+// section gets Grok/xAI items even when HN has none.
+// xAI changelog feed (Tools slot): xai-sdk-python CHANGELOG raw from GitHub.
+async function fetchGrok(): Promise<string> {
+  try {
+    const url = 'https://raw.githubusercontent.com/xai-org/xai-sdk-python/main/CHANGELOG.md';
+    const res = await fetch(url, { headers: { 'User-Agent': 'opencode-telegram-digest' }, signal: AbortSignal.timeout(20000) });
+    const md = await res.text();
+    // Keep [Unreleased] plus the two newest version sections only.
+    const parts = md.split(/^## \[/m).slice(0, 3);
+    const lines: string[] = [];
+    for (const p of parts) {
+      const head = p.split('\n', 1)[0].replace(/\]\(.*?\)/, '').replace(/\]$/, '').trim();
+      const bullets = [...p.matchAll(/^[-*] (.{20,180})/gm)].slice(0, 4).map((m) => `  - ${m[1].trim()}`);
+      if (bullets.length) lines.push(`* ${head}`, ...bullets);
+    }
+    const out = lines.join('\n').slice(0, 1500);
+    return out || '(no xAI releases found)';
+  } catch {
+    return '(grok feed unavailable)';
+  }
+}
 // Authenticated gh-CLI fallback: when the plain GitHub API rate-limits,
 // retry the identical query through `gh api` (same query, same results).
 async function ghWithCliFallback(q: string, plain: string): Promise<string> {
@@ -189,15 +265,16 @@ function previousBriefings(): string {
   }
 }
 
-function buildPrompt(dateStr: string, raw: { radar: string; tracked: string; news: string; arxivBest: string; gh1: string; gh2: string }, previous: string): string {
+function buildPrompt(dateStr: string, raw: { radar: string; tracked: string; news: string; rss: string; grok: string; arxivBest: string; gh1: string; gh2: string }, previous: string): string {
   const manifest = readManifest();
   return `Generate the daily AI Morning Briefing and output ONLY the briefing text (no preamble, no commentary).
 PART 1 — DIGEST (keep this exact format):
 🌅 AI Morning Briefing — ${dateStr}
-📰 NEWS: 🔴 Top Story (1 item), 📌 Major News (4-6 items), 🧰 New Tools & Releases (2-4 items). Use today's top AI news; prefer fresh sources. Work ONLY from the dumps below — no web browsing. Verify installs with at most 6 shell checks total (which/ls/brew list), then write.
-🐙 GITHUB TRENDING — NEW AI REPOS: from the GitHub API dumps below, list: name ⭐stars — one-line description.
+📰 NEWS: 🔴 Top Story (1 item), 📌 Major News (4-6 items), 🧰 New Tools & Releases (2-4 items). Build NEWS from the PRESS/RSS dump first, HN second; xAI API minutiae stay OUT of NEWS (they belong in Tools). Work ONLY from the dumps below — no web browsing. Verify installs with at most 6 shell checks total (which/ls/brew list), then write.
+🐙 GITHUB TRENDING — NEW AI REPOS: from the GitHub API dumps below (already limited to repos created in the last 14 days), list: name ⭐stars — one-line description.
 📄 PAPERS: max 3 from RAW ARXIV BEST below, skip entirely if none are relevant to the fitment context. Total briefing length unchanged — keep every other section tight to fit.
-DEDUPE: skip any repo already listed in the PREVIOUS BRIEFINGS section — do not re-list repeats.
+🧰 TOOLS SOURCES: the GROK/XAI RELEASES dump below is Tools material (API/SDK releases), not NEWS — fold at most 1 item into Tools, skip if stale.
+DEDUPE: skip any repo already listed in the PREVIOUS BRIEFINGS section — do not re-list repeats. Never mention previous briefings, their dates, or their filenames anywhere in the output — verdict lines only.
 PART 2 — 🎯 FITMENT (mandatory final section):
 Assess EVERY news item and EVERY repo against this context: ${FITMENT_CONTEXT}
 ALREADY DEPLOYED — DO NOT SUGGEST (mark already have, never recommend installing).
@@ -218,8 +295,14 @@ Keep the section tight — bullets, no essays. Plain text only: NO Markdown form
 RAW RADAR:
 ${raw.radar}
 
-TODAY'S AI NEWS (HN, last 24h — use for the NEWS section):
+TODAY'S AI NEWS (HN, last 24h — second source for the NEWS section):
 ${raw.news}
+
+PRESS/RSS NEWS (TechCrunch AI, HF blog, Verge, Ars, Simon Willison — last 24h, primary source for NEWS):
+${raw.rss}
+
+GROK/XAI RELEASES (public changelog — Tools material, at most 1 item, skip if stale):
+${raw.grok}
 
 RAW TRACKED ACTIVITY:
 ${raw.tracked}
