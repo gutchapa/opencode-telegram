@@ -282,8 +282,9 @@ Authoritative list, verified across runs:
 ${manifest}
 Learning rule: if your live shell checks confirm a stable setup item (installed app, brew package, running service, configured tool) missing above, append it with: python3 -c "import json; p='${manifestPath()}'; d=json.load(open(p)); d['items'].append({'name':'<name>','note':'<one line>','added':'<today YYYY-MM-DD>','by':'briefing'}); json.dump(d,open(p,'w'),indent=2)". Additions only — never remove or edit existing entries.
 For each item emit EXACTLY one bullet in this literal shape (glyph is mandatory, not optional):
-• <name> — ✅ useful (<one line: why + what to do>)
+• <name> — ✅ useful (<one line: why + what to do>) [https://github.com/<owner>/<repo>]
 • <name> — ⏭️ skip (<one line reason: 'duplicate of OpenClaw', 'paid plan', 'not our use case', 'news only', 'already have'>)
+Every ✅ useful bullet MUST end with the full repo URL in brackets — a useful verdict without a path is malformed. Use the URL from the dumps; if the dump has no URL, write [no-url] and say so. ⏭️ skip bullets carry no URL.
 Few-shot (copy this style):
 • elder-plinius/T3MP3ST — ⏭️ skip (offensive security; not our use case)
 • Leonxlnx/unlazy — ✅ useful (free/open anti-laziness skill; port its Depth-Tree idea into an OpenClaw skill)
