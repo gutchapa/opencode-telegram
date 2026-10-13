@@ -46,6 +46,15 @@ setupSlashCommands();
   await t('digest status off', await handleCommand(OWNER, 'x', '/digest status'), 'Daily digest: OFF.');
   await t('digest on', await handleCommand(OWNER, 'x', '/digest on'), 'Daily digest enabled.');
   await t('stranger digest refused', await handleCommand('999', 'x', '/digest status'), 'Not authorized.');
+  // Regression: plain sentences must NEVER dispatch commands, even when the
+  // first word collides with one ("New git repo..." wiped history via /new).
+  // Stub the AI fallback so these tests never spawn a real agent run.
+  const { setAiHandler } = require('../dist/sdk/plugin-runtime.js');
+  setAiHandler(async () => 'AI-FALLBACK');
+  await t('bare New... not /new', await handleCommand(OWNER, 'x', 'New git repo... Check the fitment..'), 'AI-FALLBACK');
+  await t('bare Status... not /status', await handleCommand(OWNER, 'x', 'Status update on the family trip'), 'AI-FALLBACK');
+  await t('bare run... not a command', await handleCommand(OWNER, 'x', 'run the tests now'), 'AI-FALLBACK');
+  await t('run /digest still dispatches', await handleCommand(OWNER, 'x', 'run /digest status'), 'Daily digest: ON.');
   const { claimDigestDay, releaseDigestClaim } = require('../dist/digest.js');
   releaseDigestClaim();
   await t('digest claim first wins', claimDigestDay(), true);
