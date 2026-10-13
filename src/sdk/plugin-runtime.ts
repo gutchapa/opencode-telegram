@@ -23,9 +23,18 @@ export async function handleCommand(user: string, username: string, command: str
     lower = lower.substring(4);
   }
 
-  if (lower.startsWith('/')) {
-    lower = lower.substring(1);
+  // Commands REQUIRE a leading slash. Plain sentences whose first word
+  // collides with a command name ("New git repo...", "Status update on...")
+  // must fall through to the AI handler — never execute. Previously the
+  // slash was optional and "New git repo..." wiped the session via /new.
+  if (!lower.startsWith('/')) {
+    if (aiHandler) {
+      console.log('No leading slash — routing to AI handler for:', command);
+      return await aiHandler(user, command);
+    }
+    return null;
   }
+  lower = lower.substring(1);
 
   const cmdName = lower.split(/\s+/)[0];
   const args = body.split(/\s+/).slice(1).join(' ');
