@@ -259,6 +259,72 @@ async function runAgenticViaClient(message: string, user: string): Promise<strin
   }
 }
 
+async function deleteClientSession(sessionId: string, directory: string): Promise<void> {
+  if (!opencodeClient || !sessionId) return;
+  // Best-effort cleanup across SDK shapes; a failed delete must never fail
+  // the digest — the session simply lingers like before.
+  const attempts: (() => Promise<unknown>)[] = [];
+  const s = opencodeClient.session as any;
+  if (s?.delete) attempts.push(() => s.delete({ path: { id: sessionId }, query: { directory } }));
+  if (s?.remove) attempts.push(() => s.remove({ path: { id: sessionId }, query: { directory } }));
+  if (opencodeClient?.deleteSession) attempts.push(() => opencodeClient.deleteSession(sessionId));
+  for (const fn of attempts) {
+    try {
+      await fn();
+      return;
+    } catch { /* try next shape */ }
+  }
+}
+
+// Digest-only path: each briefing runs in a FRESH session that is deleted
+// afterwards, so daily digests never accumulate in the opencode CLI session
+// list. Never reuses or stores the id in opencodeSessionIds. Telegram
+// delivery happens in digest.ts via sendTextToChat; nothing here prints.
+export async function runDigestAgentic(fullPrompt: string): Promise<string> {
+  if (!opencodeClient) {
+    // Standalone mode: fall back to the subprocess path (no persistent
+    // session is created there either).
+    return runOpencodeAgentic(fullPrompt, 'digest-ephemeral', fullPrompt, '');
+  }
+  const directory = opencodeDirectory || OPENCODE_CWD;
+  const created = await opencodeClient.session.create({
+    body: { title: `telegram-digest-ephemeral:${new Date().toISOString()}` },
+    query: { directory },
+  });
+  const sessionId = created?.data?.id ?? created?.id;
+  if (!sessionId) {
+    throw new Error('opencode client session create returned no session id');
+  }
+  try {
+    const response = await Promise.race([
+      opencodeClient.session.prompt({
+        path: { id: sessionId },
+        body: { parts: [{ type: 'text', text: fullPrompt }] },
+        query: { directory },
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          opencodeClient.session.abort({ path: { id: sessionId }, query: { directory } }).catch(() => {});
+          reject(new Error(`digest prompt timed out after ${OPENCODE_TIMEOUT_MS}ms`));
+        }, OPENCODE_TIMEOUT_MS),
+      ),
+    ]);
+    const parts = response?.data?.parts ?? response?.parts ?? [];
+    const text = parts
+      .filter((p: any) => p.type === 'text' && !p.synthetic && !p.ignored)
+      .map((p: any) => p.text)
+      .join('\n')
+      .replace(/\x1b\[[0-9;]*m/g, '')
+      .trim();
+    if (!text) {
+      throw new Error('digest prompt produced no text');
+    }
+    return cleanFences(text);
+  } finally {
+    await deleteClientSession(sessionId, directory);
+  }
+}
+
 export async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessage: string, prelude = ''): Promise<string> {
   if (opencodeClient) {
     // The SDK session keeps its own history, so send the latest message plus

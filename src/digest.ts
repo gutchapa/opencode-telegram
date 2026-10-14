@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
-import { runOpencodeAgentic } from './ai-handler';
+import { runDigestAgentic } from './ai-handler';
 import { sendTextToChat } from './runtime/telegram-bot';
 
 const execFileAsync = promisify(execFile);
@@ -339,21 +339,28 @@ function chunk(text: string, n = 4000): string[] {
   return out;
 }
 
-export async function runDailyDigest(chatId: number): Promise<string> {
+export async function runDailyDigest(chatId: number): Promise<void> {
   const raw = await fetchRaw();
   const prompt = buildPrompt(
     new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
     raw,
     previousBriefings(),
   );
-  let text = stripPreamble(await runOpencodeAgentic(prompt, 'digest', prompt, ''));
+  // Telegram-ONLY delivery: the briefing is sent via sendTextToChat chunks
+  // and archived to sent/. Nothing is returned, so no caller (scheduler,
+  // /digest handler, plugin host) can render it into the opencode CLI.
+  // The agent run itself uses an ephemeral session (see runDigestAgentic)
+  // that is deleted afterwards — digests never linger in the CLI list.
+  const text = stripPreamble(await runDigestAgentic(prompt));
   if (!text) {
     throw new Error('digest agent produced no briefing');
   }
   if (process.env.TELEGRAM_DIGEST_DRY_RUN) {
-    return text;
+    return;
   }
-  for (const part of chunk(text)) {
+  const parts = chunk(text);
+  console.log(`Digest ready: ${parts.length} Telegram chunk(s) to chat ${chatId}`);
+  for (const part of parts) {
     await sendTextToChat(chatId, part);
   }
   try {
@@ -363,7 +370,6 @@ export async function runDailyDigest(chatId: number): Promise<string> {
     writeFileSync(join(home, 'sent', `${todayStr(d)}.md`), text);
   } catch { /* archive is best-effort */ }
   markRun();
-  return text;
 }
 
 let lastFailAt = 0;
