@@ -299,7 +299,10 @@ export async function runDigestAgentic(fullPrompt: string): Promise<string> {
     const response = await Promise.race([
       opencodeClient.session.prompt({
         path: { id: sessionId },
-        body: { parts: [{ type: 'text', text: fullPrompt }] },
+        // The "digest" agent (~/.config/opencode/agent/digest.md) has every tool denied:
+        // it only writes the digest from the data in the prompt, so a poisoned news item
+        // can't make it run shell commands, touch files or browse.
+        body: { agent: 'digest', parts: [{ type: 'text', text: fullPrompt }] },
         query: { directory },
       }),
       new Promise<never>((_, reject) =>
