@@ -19,3 +19,10 @@ const content = [
 
 fs.writeFileSync(out, content);
 console.log('wrote ' + out);
+
+// dist/v2.mjs is authored as ESM (src/v2.mjs) because @opencode/plugin is
+// ESM-only and cannot be imported from the CommonJS build; tsc does not emit it.
+const v2src = path.join(__dirname, '..', 'src', 'v2.mjs');
+const v2out = path.join(__dirname, '..', 'dist', 'v2.mjs');
+fs.copyFileSync(v2src, v2out);
+console.log('wrote ' + v2out);

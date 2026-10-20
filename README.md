@@ -18,15 +18,25 @@ export ALLOWED_TELEGRAM_USERS=your_telegram_user_id
 opencode-telegram-bot
 ```
 
-As an opencode plugin, add it to `~/.config/opencode/opencode.json` and restart opencode:
+As an opencode plugin (opencode v2), add it to `~/.config/opencode/opencode.json` and restart opencode:
 
 ```json
 {
-  "plugin": ["gutchapa-opencode-telegram"]
+  "plugins": ["gutchapa-opencode-telegram"]
 }
 ```
 
-Telegram polling is opt-in for the plugin (`{ "enabled": true }` or `TELEGRAM_PLUGIN_ENABLED=1`). The token and allowed users go in plugin options or the env vars above. Full walkthrough below.
+Telegram polling is opt-in for the plugin (`{ "enabled": true }` or `TELEGRAM_PLUGIN_ENABLED=1`). The token and allowed users go in plugin options or the env vars above.
+
+On opencode 1.x, use the bundled V1 entry instead:
+
+```json
+{
+  "plugin": ["gutchapa-opencode-telegram/v1"]
+}
+```
+
+Full walkthrough below.
 
 ## Morning briefing
 
@@ -53,9 +63,10 @@ Bottom line: nothing to install today.
 
 Two ways, same bot:
 
-1. **As an opencode plugin** — registers with the running opencode instance
-   (TUI, `opencode serve`, or `opencode run`). Telegram polling is opt-in;
-   agentic replies go through the hosting opencode server.
+1. **As an opencode plugin** — registers with the running opencode instance.
+   On opencode v2 the plugin gets a live context, so replies run through
+   `ctx.session` against the host. On 1.x the `./v1` entry registers the same
+   bot through the older plugin contract. Telegram polling is opt-in.
 2. **As a standalone bot** (`opencode-telegram-bot` / `npm start`) — a
    long-running Telegram poller that spawns `opencode run` for agentic replies.
    Use this if you want the bot available even when opencode is not running

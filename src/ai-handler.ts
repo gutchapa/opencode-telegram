@@ -126,8 +126,93 @@ export function isUnfulfilledPromise(response: string): boolean {
 // of spawning a nested `opencode run` process.
 let opencodeClient: any = null;
 let opencodeDirectory: string | undefined;
+// OpenCode V2 plugin context. When present it takes precedence over both the V1
+// in-process client and the subprocess path, because V2 sessions live inside the
+// host that loaded the plugin.
+let opencodeV2: any = null;
 // Reuse one opencode session per chat so the SDK path keeps real multi-turn context.
 const opencodeSessionIds = new Map<string, string>();
+
+export function setV2Context(ctx: unknown): void {
+  opencodeV2 = ctx;
+}
+
+function v2SessionIdOf(session: any): string | undefined {
+  return session?.id ?? session?.data?.id;
+}
+
+// V2 returns SessionMessageInfo[] for ctx.session.context. Shapes vary by
+// version, so accept both `parts` and `info.parts` and take the last assistant
+// text block rather than assuming a fixed envelope.
+function v2TextFromMessages(messages: any): string {
+  const list: any[] = Array.isArray(messages) ? messages : [];
+  const chunks: string[] = [];
+  for (const message of list) {
+    const role = message?.role ?? message?.info?.role;
+    if (role && role !== 'assistant') continue;
+    const parts = message?.parts ?? message?.info?.parts ?? [];
+    for (const part of parts) {
+      if (part?.type !== 'text') continue;
+      if (part?.synthetic || part?.ignored) continue;
+      if (typeof part.text === 'string') chunks.push(part.text);
+    }
+  }
+  return chunks.join('\n').replace(/\x1b\[[0-9;]*m/g, '').trim();
+}
+
+async function runAgenticViaV2(message: string, user: string): Promise<string> {
+  let sessionId = opencodeSessionIds.get(user);
+  if (!sessionId) {
+    const created = await opencodeV2.session.create({
+      title: `telegram:${new Date().toISOString()}`,
+    });
+    sessionId = v2SessionIdOf(created);
+    if (!sessionId) {
+      throw new Error('opencode v2 session create returned no session id');
+    }
+    opencodeSessionIds.set(user, sessionId);
+    while (opencodeSessionIds.size > 50) {
+      const oldest = opencodeSessionIds.keys().next();
+      if (oldest.done) break;
+      opencodeSessionIds.delete(oldest.value);
+    }
+  }
+
+  try {
+    await Promise.race([
+      opencodeV2.session.prompt({ sessionID: sessionId, text: message }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          Promise.resolve(opencodeV2.session.interrupt({ sessionID: sessionId })).catch(() => {});
+          reject(new Error(`opencode v2 prompt timed out after ${OPENCODE_TIMEOUT_MS}ms`));
+        }, OPENCODE_TIMEOUT_MS),
+      ),
+    ]);
+
+    if (typeof opencodeV2.session.wait === 'function') {
+      await Promise.race([
+        opencodeV2.session.wait({ sessionID: sessionId }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`opencode v2 wait timed out after ${OPENCODE_TIMEOUT_MS}ms`)),
+            OPENCODE_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+    }
+
+    const messages = await opencodeV2.session.context({ sessionID: sessionId });
+    const text = v2TextFromMessages(messages);
+    if (!text) {
+      throw new Error('opencode v2 prompt produced no text');
+    }
+    return cleanFences(text);
+  } catch (error) {
+    // Drop the session so the next turn starts clean.
+    opencodeSessionIds.delete(user);
+    throw error;
+  }
+}
 
 export function setOpencodeClient(client: unknown, directory?: string): void {
   opencodeClient = client;
@@ -281,6 +366,42 @@ async function deleteClientSession(sessionId: string, directory: string): Promis
 // list. Never reuses or stores the id in opencodeSessionIds. Telegram
 // delivery happens in digest.ts via sendTextToChat; nothing here prints.
 export async function runDigestAgentic(fullPrompt: string): Promise<string> {
+  if (opencodeV2) {
+    // Fresh session per digest, removed afterwards so briefings never pile up
+    // in the session list. The digest agent denies every tool, as in V1.
+    const created = await opencodeV2.session.create({
+      title: `telegram-digest-ephemeral:${new Date().toISOString()}`,
+    });
+    const sessionId = v2SessionIdOf(created);
+    if (!sessionId) {
+      throw new Error('opencode v2 session create returned no session id');
+    }
+    try {
+      await Promise.race([
+        opencodeV2.session.prompt({ sessionID: sessionId, text: fullPrompt, agent: 'digest' }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            Promise.resolve(opencodeV2.session.interrupt({ sessionID: sessionId })).catch(() => {});
+            reject(new Error(`digest prompt timed out after ${OPENCODE_TIMEOUT_MS}ms`));
+          }, OPENCODE_TIMEOUT_MS),
+        ),
+      ]);
+      if (typeof opencodeV2.session.wait === 'function') {
+        await opencodeV2.session.wait({ sessionID: sessionId });
+      }
+      const messages = await opencodeV2.session.context({ sessionID: sessionId });
+      const text = v2TextFromMessages(messages);
+      if (!text) {
+        throw new Error('digest agent produced no text');
+      }
+      return cleanFences(text);
+    } finally {
+      if (typeof opencodeV2.session.remove === 'function') {
+        Promise.resolve(opencodeV2.session.remove({ sessionID: sessionId })).catch(() => {});
+      }
+    }
+  }
+
   if (!opencodeClient) {
     // Standalone mode: fall back to the subprocess path (no persistent
     // session is created there either).
@@ -329,6 +450,12 @@ export async function runDigestAgentic(fullPrompt: string): Promise<string> {
 }
 
 export async function runOpencodeAgentic(fullPrompt: string, user: string, latestMessage: string, prelude = ''): Promise<string> {
+  if (opencodeV2) {
+    // V2 sessions keep their own history, same as the V1 client path.
+    const turnPrompt = [prelude, latestMessage].filter(Boolean).join('\n\n');
+    return await runAgenticViaV2(turnPrompt, user);
+  }
+
   if (opencodeClient) {
     // The SDK session keeps its own history, so send the latest message plus
     // the current goal/steer/focus prelude (no transcript duplication).

@@ -1,11 +1,17 @@
 {
   "name": "gutchapa-opencode-telegram",
-  "version": "1.5.4",
+  "version": "2.0.0",
   "description": "Telegram bot for opencode: chat with your local AI assistant over Telegram, with 70+ slash commands",
   "main": "dist/plugin.js",
   "types": "dist/plugin.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/v2.mjs",
+      "require": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./v1": {
       "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.mjs",
       "require": "./dist/plugin.js",
@@ -49,7 +55,9 @@
     "type": "git",
     "url": "git+https://github.com/gutchapa/opencode-telegram.git"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@opencode/plugin": "2.0.32"
+  },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "typescript": "^5.3.0",
